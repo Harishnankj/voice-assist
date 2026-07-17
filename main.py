@@ -8,7 +8,17 @@ import requests
 from flask import Flask, request, jsonify, send_from_directory, render_template
 import edge_tts
 
-app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates'))
+# Configure Flask template folder to search in the repository root directory
+root_dir = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__, template_folder=root_dir)
+
+# Enable CORS manually to allow the webpage hosted on GitHub Pages to communicate with Render
+@app.after_request
+def add_cors_headers(response):
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add("Access-Control-Allow-Headers", "Content-Type")
+    response.headers.add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+    return response
 
 # Ensure static directory exists to save response speech files
 STATIC_DIR = os.path.join(app.root_path, 'static')
@@ -199,7 +209,6 @@ def process_voice():
 
     except Exception as e:
         print(f"Gemini Voice Processing Exception: {e}")
-        # Fallback in case of parsing errors or timeouts
         user_text = "Voice command received"
         reply_text = "Sorry, I had trouble listening to your request. Please try again."
 

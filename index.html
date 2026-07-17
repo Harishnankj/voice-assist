@@ -288,12 +288,17 @@
     </div>
 
     <script>
+        // Automatically route API requests to the Render cloud backend if hosted on GitHub Pages
+        const API_BASE = window.location.hostname.includes('github.io')
+            ? 'https://voice-assist-bi8y.onrender.com'
+            : '';
+
         let lastMessageCount = 0;
 
         // Fetch chat history from the Flask backend
         async function fetchHistory() {
             try {
-                const response = await fetch('/history');
+                const response = await fetch(API_BASE + '/history');
                 const data = await response.json();
                 
                 if (data.history.length > lastMessageCount) {
@@ -362,7 +367,7 @@
             input.value = ''; // Reset input field
 
             try {
-                const response = await fetch('/chat', {
+                const response = await fetch(API_BASE + '/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text: text })
@@ -387,7 +392,7 @@
             const model = select.value;
             
             try {
-                const response = await fetch('/model', {
+                const response = await fetch(API_BASE + '/model', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ model: model })
@@ -402,7 +407,7 @@
         // Fetch selected model configuration from server on load
         async function loadSelectedModel() {
             try {
-                const response = await fetch('/model');
+                const response = await fetch(API_BASE + '/model');
                 const data = await response.json();
                 document.getElementById('modelSelect').value = data.active_model;
             } catch (error) {
