@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 AI Voice Assistant Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --container-bg: rgba(255, 255, 255, 0.03);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --accent-primary: #6366f1; /* Indigo */
+            --accent-secondary: #10b981; /* Emerald */
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --user-bubble: rgba(99, 102, 241, 0.15);
+            --ai-bubble: rgba(255, 255, 255, 0.05);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.15) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.1) 0%, transparent 40%);
+        }
+
+        .dashboard-container {
+            width: 90%;
+            max-width: 900px;
+            height: 85vh;
+            background: var(--container-bg);
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(16px);
+            border-radius: 24px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        /* Header Style */
+        header {
+            padding: 20px 30px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(11, 15, 25, 0.5);
+        }
+
+        .header-title-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            background-color: var(--accent-secondary);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--accent-secondary);
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 800;
+            background: linear-gradient(45deg, #a78bfa, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .model-selector-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .model-selector-container label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        select {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 8px 16px;
+            border-radius: 12px;
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        select:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 8px rgba(99, 102, 241, 0.3);
+        }
+
+        /* Chat Area Style */
+        .chat-area {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            scroll-behavior: smooth;
+        }
+
+        /* Custom Scrollbar */
+        .chat-area::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chat-area::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .chat-area::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        .message-bubble {
+            max-width: 75%;
+            padding: 16px 20px;
+            border-radius: 20px;
+            line-height: 1.5;
+            position: relative;
+            animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            font-size: 0.95rem;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(12px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message-user {
+            background-color: var(--user-bubble);
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+
+        .message-assistant {
+            background-color: var(--ai-bubble);
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+            border: 1px solid var(--border-color);
+        }
+
+        .message-meta {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .message-text {
+            color: var(--text-main);
+        }
+
+        /* Audio Playback Controls */
+        .play-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            background: var(--accent-primary);
+            border: none;
+            border-radius: 50%;
+            color: white;
+            cursor: pointer;
+            margin-left: 10px;
+            transition: all 0.2s ease;
+            vertical-align: middle;
+        }
+
+        .play-button:hover {
+            transform: scale(1.1);
+            background-color: #4f46e5;
+        }
+
+        /* Input Area Style */
+        .input-container {
+            padding: 20px 30px;
+            border-top: 1px solid var(--border-color);
+            background: rgba(11, 15, 25, 0.5);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .input-container input {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 14px 20px;
+            border-radius: 14px;
+            outline: none;
+            font-family: inherit;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+        }
+
+        .input-container input:focus {
+            border-color: var(--accent-primary);
+            background: rgba(255, 255, 255, 0.07);
+        }
+
+        .input-container button {
+            background: var(--accent-primary);
+            border: none;
+            color: white;
+            padding: 14px 24px;
+            border-radius: 14px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .input-container button:hover {
+            background: #4f46e5;
+            box-shadow: 0 4px 20px rgba(99, 102, 241, 0.5);
+        }
+
+        .input-container button:active {
+            transform: scale(0.98);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="dashboard-container">
+        <header>
+            <div class="header-title-container">
+                <div class="status-dot"></div>
+                <h1>XiaoZhi Assistant Console</h1>
+            </div>
+            
+            <div class="model-selector-container">
+                <label for="modelSelect">AI Brain:</label>
+                <select id="modelSelect" onchange="changeModel()">
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (Light & Fast)</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (Heavy & Smart)</option>
+                </select>
+            </div>
+        </header>
+
+        <div class="chat-area" id="chatArea">
+            <!-- Messages will be dynamically rendered here -->
+        </div>
+
+        <div class="input-container">
+            <input type="text" id="textInput" placeholder="Type a message to the voice assistant..." onkeypress="handleKeyPress(event)">
+            <button onclick="sendTextMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        let lastMessageCount = 0;
+
+        // Fetch chat history from the Flask backend
+        async function fetchHistory() {
+            try {
+                const response = await fetch('/history');
+                const data = await response.json();
+                
+                if (data.history.length > lastMessageCount) {
+                    renderMessages(data.history);
+                    lastMessageCount = data.history.length;
+                    scrollToBottom();
+                }
+            } catch (error) {
+                console.error("Error fetching chat logs:", error);
+            }
+        }
+
+        // Render messages array to the chat log UI
+        function renderMessages(history) {
+            const chatArea = document.getElementById('chatArea');
+            chatArea.innerHTML = ''; // Clear and re-render
+
+            history.forEach(msg => {
+                const isUser = msg.sender === 'user';
+                const bubble = document.createElement('div');
+                bubble.className = `message-bubble ${isUser ? 'message-user' : 'message-assistant'}`;
+
+                // Meta Header
+                const meta = document.createElement('div');
+                meta.className = 'message-meta';
+                
+                // Show source label (Voice vs Web)
+                const sourceLabel = msg.source === 'voice' ? '🎙️ via Voice' : '💻 via Web';
+                meta.textContent = `${isUser ? 'User' : 'Assistant'} (${sourceLabel}) - ${msg.timestamp}`;
+                bubble.appendChild(meta);
+
+                // Message Text
+                const textSpan = document.createElement('span');
+                textSpan.className = 'message-text';
+                textSpan.textContent = msg.text;
+                bubble.appendChild(textSpan);
+
+                // Add play button to AI speech file if available
+                if (!isUser && msg.audio) {
+                    const playBtn = document.createElement('button');
+                    playBtn.className = 'play-button';
+                    playBtn.innerHTML = '▶';
+                    playBtn.onclick = () => {
+                        const audio = new Audio(msg.audio);
+                        audio.play();
+                    };
+                    bubble.appendChild(playBtn);
+                }
+
+                chatArea.appendChild(bubble);
+            });
+        }
+
+        // Scroll to the bottom of the chat container
+        function scrollToBottom() {
+            const chatArea = document.getElementById('chatArea');
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        // Send text query from web dashboard
+        async function sendTextMessage() {
+            const input = document.getElementById('textInput');
+            const text = input.value.trim();
+            if (!text) return;
+
+            input.value = ''; // Reset input field
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text })
+                });
+                
+                const data = await response.json();
+                fetchHistory(); // Sync chat logs
+            } catch (error) {
+                console.error("Error sending text query:", error);
+            }
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendTextMessage();
+            }
+        }
+
+        // Update selected model on server configuration
+        async function changeModel() {
+            const select = document.getElementById('modelSelect');
+            const model = select.value;
+            
+            try {
+                const response = await fetch('/model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model: model })
+                });
+                const data = await response.json();
+                console.log(`Model switched to: ${data.active_model}`);
+            } catch (error) {
+                console.error("Error setting active model:", error);
+            }
+        }
+
+        // Fetch selected model configuration from server on load
+        async function loadSelectedModel() {
+            try {
+                const response = await fetch('/model');
+                const data = await response.json();
+                document.getElementById('modelSelect').value = data.active_model;
+            } catch (error) {
+                console.error("Error loading model config:", error);
+            }
+        }
+
+        // Load model configuration and poll chat history every 1.5 seconds
+        window.onload = () => {
+            loadSelectedModel();
+            fetchHistory();
+            setInterval(fetchHistory, 1500);
+        };
+    </script>
+</body>
+</html>
