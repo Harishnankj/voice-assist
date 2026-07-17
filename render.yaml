@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: voice-assistant-server
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn main:app
+    envVars:
+      - key: GEMINI_API_KEY
+        placeholder: "Enter your Google Gemini API Key"
