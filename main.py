@@ -1,19 +1,14 @@
 import os
 import io
+import json
+import base64
 import asyncio
-import nest_asyncio
 import datetime
+import requests
 from flask import Flask, request, jsonify, send_from_directory, render_template
-import speech_recognition as sr
-import google.generativeai as genai
 import edge_tts
 
-# Apply nest_asyncio to support running async Edge-TTS inside synchronous Flask
-nest_asyncio.apply()
-
-# Configure custom template directory folder
-template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
-app = Flask(__name__, template_folder=template_dir)
+app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates'))
 
 # Ensure static directory exists to save response speech files
 STATIC_DIR = os.path.join(app.root_path, 'static')
@@ -24,10 +19,9 @@ RESPONSE_AUDIO_PATH = os.path.join(STATIC_DIR, 'response.mp3')
 active_model = "gemini-1.5-flash"  # Default active model
 chat_history = []                  # In-memory chat transcripts logs
 
-# Configure Gemini API
+# Retrieve Gemini API Key from environment
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
     print("Gemini API configured successfully.")
 else:
     print("WARNING: GEMINI_API_KEY environment variable is not set.")
@@ -44,12 +38,10 @@ def get_current_timestamp():
 
 @app.route('/')
 def index():
-    # Serve the beautiful web dashboard
     return render_template('index.html')
 
 @app.route('/history', methods=['GET'])
 def get_history():
-    # Return conversational log history to the Web client
     return jsonify({"history": chat_history})
 
 @app.route('/model', methods=['GET', 'POST'])
@@ -88,22 +80,33 @@ def process_text_chat():
         "timestamp": timestamp
     })
 
-    # Query Gemini LLM
     if not GEMINI_API_KEY:
         reply_text = "Gemini key is missing. Please configure it in your Render settings."
     else:
         try:
-            model = genai.GenerativeModel(active_model)
-            prompt = (
-                f"You are a friendly ESP32 voice assistant. "
-                f"Keep your response short, conversational, and limited to 1 or 2 sentences. "
-                f"User asked: {user_text}"
-            )
-            response = model.generate_content(prompt)
-            reply_text = response.text.strip()
+            # Query Gemini using standard HTTP REST request
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent?key={GEMINI_API_KEY}"
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "text": (
+                                    f"You are a friendly ESP32 voice assistant. "
+                                    f"Keep your response short, conversational, and limited to 1 or 2 sentences. "
+                                    f"User asked: {user_text}"
+                                )
+                            }
+                        ]
+                    }
+                ]
+            }
+            response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=10)
+            response_json = response.json()
+            reply_text = response_json['candidates'][0]['content']['parts'][0]['text'].strip()
             print(f"Gemini AI ({active_model}) Reply: '{reply_text}'")
         except Exception as e:
-            print(f"LLM Exception: {e}")
+            print(f"Gemini API Exception: {e}")
             reply_text = "Sorry, I had trouble reaching my AI brain. Please try again."
 
     # Text-to-Speech (TTS)
@@ -141,52 +144,75 @@ def process_voice():
     audio_data = request.data
     timestamp = get_current_timestamp()
     
-    # 1. Speech-to-Text (ASR)
-    recognizer = sr.Recognizer()
+    if not GEMINI_API_KEY:
+        return jsonify({"error": "Gemini API key is not configured"}), 500
+
+    # 1. Base64-encode the raw WAV audio
+    audio_b64 = base64.b64encode(audio_data).decode('utf-8')
+
+    # 2. Query Gemini API directly to transcribe and generate response in a single step
     try:
-        audio_file = io.BytesIO(audio_data)
-        with sr.AudioFile(audio_file) as source:
-            audio_recording = recognizer.record(source)
-            user_text = recognizer.recognize_google(audio_recording)
-            print(f"Transcribed Text: '{user_text}'")
-    except sr.UnknownValueError:
-        print("ASR Error: Google Speech Recognition could not understand audio")
-        user_text = ""
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent?key={GEMINI_API_KEY}"
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "inlineData": {
+                                "mimeType": "audio/wav",
+                                "data": audio_b64
+                            }
+                        },
+                        {
+                            "text": (
+                                "Listen to this audio recording. Respond as a friendly ESP32 voice assistant (short, 1-2 sentences). "
+                                "You must return your reply ONLY as a raw JSON object containing two fields: "
+                                "'query' (the exact text transcription of what the user asked in the audio) and "
+                                "'reply' (your response to their question). Do not include any markdown formatting, backticks, or other text."
+                            )
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=20)
+        response_json = response.json()
+        raw_text = response_json['candidates'][0]['content']['parts'][0]['text'].strip()
+        
+        # Clean up any potential markdown backticks returned by Gemini
+        if raw_text.startswith("```json"):
+            raw_text = raw_text[7:]
+        if raw_text.startswith("```"):
+            raw_text = raw_text[3:]
+        if raw_text.endswith("```"):
+            raw_text = raw_text[:-3]
+        raw_text = raw_text.strip()
+        
+        # Parse the JSON response from Gemini
+        ai_data = json.loads(raw_text)
+        user_text = ai_data.get("query", "").strip()
+        reply_text = ai_data.get("reply", "").strip()
+        
+        print(f"Gemini Transcribed: '{user_text}'")
+        print(f"Gemini Replied: '{reply_text}'")
+
     except Exception as e:
-        print(f"ASR Exception: {e}")
-        user_text = ""
+        print(f"Gemini Voice Processing Exception: {e}")
+        # Fallback in case of parsing errors or timeouts
+        user_text = "Voice command received"
+        reply_text = "Sorry, I had trouble listening to your request. Please try again."
 
-    if not user_text:
-        reply_text = "I couldn't hear you clearly. Could you please repeat that?"
-    else:
-        # Save user query to history logs
-        chat_history.append({
-            "sender": "user",
-            "text": user_text,
-            "source": "voice",
-            "audio": None,
-            "timestamp": timestamp
-        })
+    # 3. Save conversation history logs
+    chat_history.append({
+        "sender": "user",
+        "text": user_text,
+        "source": "voice",
+        "audio": None,
+        "timestamp": timestamp
+    })
 
-        # 2. Query Gemini LLM
-        if not GEMINI_API_KEY:
-            reply_text = "Gemini key is missing. Please configure it in your Render settings."
-        else:
-            try:
-                model = genai.GenerativeModel(active_model)
-                prompt = (
-                    f"You are a friendly ESP32 voice assistant. "
-                    f"Keep your response short, conversational, and limited to 1 or 2 sentences. "
-                    f"User asked: {user_text}"
-                )
-                response = model.generate_content(prompt)
-                reply_text = response.text.strip()
-                print(f"Gemini AI ({active_model}) Reply: '{reply_text}'")
-            except Exception as e:
-                print(f"LLM Exception: {e}")
-                reply_text = "Sorry, I had trouble reaching my AI brain. Please try again."
-
-    # 3. Text-to-Speech (TTS)
+    # 4. Text-to-Speech (TTS)
     try:
         asyncio.run(text_to_speech(reply_text, RESPONSE_AUDIO_PATH))
         print("Speech synthesis completed.")
@@ -196,15 +222,13 @@ def process_voice():
 
     audio_url = request.url_root + "static/response.mp3"
     
-    # Save assistant reply to history logs (only if we successfully parsed a user voice query)
-    if user_text:
-        chat_history.append({
-            "sender": "assistant",
-            "text": reply_text,
-            "source": "voice",
-            "audio": audio_url,
-            "timestamp": get_current_timestamp()
-        })
+    chat_history.append({
+        "sender": "assistant",
+        "text": reply_text,
+        "source": "voice",
+        "audio": audio_url,
+        "timestamp": get_current_timestamp()
+    })
 
     return jsonify({
         "query": user_text,
@@ -212,6 +236,6 @@ def process_voice():
         "audio": audio_url
     })
 
-# Run the Flask app (only for local testing)
+# Run Flask locally (only for debugging)
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
