@@ -13,11 +13,20 @@ root_dir = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, template_folder=root_dir)
 
 # Enable CORS manually to allow the webpage hosted on GitHub Pages to communicate with Render
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        response = app.make_default_options_response()
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        response.headers.add("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
+        return response
+
 @app.after_request
 def add_cors_headers(response):
     response.headers.add("Access-Control-Allow-Origin", "*")
-    response.headers.add("Access-Control-Allow-Headers", "Content-Type")
-    response.headers.add("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+    response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    response.headers.add("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
     return response
 
 # Ensure static directory exists to save response speech files
@@ -38,7 +47,6 @@ else:
 
 async def text_to_speech(text, output_path):
     """Synthesize high-quality text-to-speech using Microsoft Edge TTS"""
-    # Using 'en-US-EmmaMultilingualNeural' (A friendly, natural female voice)
     communicate = edge_tts.Communicate(text, "en-US-EmmaMultilingualNeural")
     await communicate.save(output_path)
 
@@ -60,7 +68,7 @@ def handle_model_select():
     if request.method == 'POST':
         data = request.get_json() or {}
         model = data.get("model")
-        if model in ["gemini-1.5-flash", "gemini-1.5-pro"]:
+        if model:
             active_model = model
             print(f"Server active model updated to: {active_model}")
             return jsonify({"status": "success", "active_model": active_model})
