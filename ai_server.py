@@ -112,8 +112,8 @@ def process_text_chat():
         reply_text = "Gemini key is missing. Please configure it in your Render settings."
     else:
         try:
-            # Model retry cascade with standard Gemini model names
-            models_to_try = [active_model, "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp", "gemini-pro"]
+            # Model retry cascade with exact valid Gemini v1beta model strings
+            models_to_try = [active_model, "gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
             reply_text = None
             last_error_msg = "No response from Gemini API"
             
