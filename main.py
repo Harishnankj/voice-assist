@@ -290,11 +290,10 @@ def process_voice():
                             },
                             {
                                 "text": (
-                                    f"Listen to this audio recording. Respond as a friendly humanoid robot voice assistant named '{assistant_name}' (short, 1-2 sentences). "
-                                    f"If the user calls you by your name '{assistant_name}' or asks who you are, acknowledge your name politely. "
-                                    "You must return your reply ONLY as a raw JSON object containing two fields: "
-                                    "'query' (the exact text transcription of what the user asked in the audio) and "
-                                    "'reply' (your response to their question). Do not include any markdown formatting, backticks, or other text."
+                                    f"Listen carefully to this audio recording from an ESP32 microphone. "
+                                    f"1. Transcribe the exact question or voice command spoken by the user into the 'query' field. "
+                                    f"2. Answer their question directly, accurately, and politely as an AI robot assistant named '{assistant_name}' in the 'reply' field (1-2 sentences). "
+                                    f"Return your reply ONLY as a valid JSON object containing 'query' and 'reply'. Do not include markdown formatting or extra text."
                                 )
                             }
                         ]
