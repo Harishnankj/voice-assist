@@ -22,6 +22,7 @@ RESPONSE_AUDIO_PATH = os.path.join(STATIC_DIR, 'response.mp3')
 # Server configurations
 active_model = "gemini-1.5-flash"  # Default active model
 assistant_name = "Jarvis"            # Default assistant call-by-name identity
+pending_esp_audio = None             # Audio URL queued for ESP32 hardware playback
 chat_history = []                  # In-memory chat transcripts logs
 
 # Retrieve Gemini API Key from environment
@@ -160,6 +161,11 @@ def process_text_chat():
         print(f"TTS Exception (continuing without audio): {e}")
         audio_url = None
     
+    # Queue audio URL so ESP32 hardware plays it out loud on speaker
+    global pending_esp_audio
+    if audio_url:
+        pending_esp_audio = audio_url
+
     # Save assistant message to history logs
     chat_history.append({
         "sender": "assistant",
@@ -173,6 +179,17 @@ def process_text_chat():
         "reply": reply_text,
         "audio": audio_url
     })
+
+@app.route('/pending_audio', methods=['GET'])
+def get_pending_audio():
+    """Endpoint polled by ESP32 hardware to fetch and play web dashboard audio replies"""
+    global pending_esp_audio
+    if pending_esp_audio:
+        url = pending_esp_audio
+        pending_esp_audio = None  # Reset after sending so it only plays once
+        print(f"Delivering pending audio to ESP32: {url}")
+        return jsonify({"pending": True, "audio": url})
+    return jsonify({"pending": False, "audio": None})
 
 @app.route('/voice', methods=['POST'])
 def process_voice():
