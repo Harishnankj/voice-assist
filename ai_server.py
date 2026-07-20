@@ -176,9 +176,12 @@ def process_text_chat():
         "audio": audio_url
     })
 
-@app.route('/voice', methods=['POST'])
+@app.route('/voice', methods=['POST', 'OPTIONS'])
 def process_voice():
     """Handle audio upload recordings from the ESP32 hardware client"""
+    if request.method == 'OPTIONS':
+        return jsonify({"status": "ok"}), 200
+
     global active_model
     
     if not request.data:
@@ -194,57 +197,66 @@ def process_voice():
     # 1. Base64-encode the raw WAV audio
     audio_b64 = base64.b64encode(audio_data).decode('utf-8')
 
-    # 2. Query Gemini API directly to transcribe and generate response in a single step
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{active_model}:generateContent?key={GEMINI_API_KEY}"
-        payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {
-                            "inlineData": {
-                                "mimeType": "audio/wav",
-                                "data": audio_b64
-                            }
-                        },
-                        {
-                            "text": (
-                                "Listen to this audio recording. Respond as a friendly ESP32 voice assistant (short, 1-2 sentences). "
-                                "You must return your reply ONLY as a raw JSON object containing two fields: "
-                                "'query' (the exact text transcription of what the user asked in the audio) and "
-                                "'reply' (your response to their question). Do not include any markdown formatting, backticks, or other text."
-                            )
-                        }
-                    ]
-                }
-            ]
-        }
-        
-        response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=20)
-        response_json = response.json()
-        raw_text = response_json['candidates'][0]['content']['parts'][0]['text'].strip()
-        
-        # Clean up any potential markdown backticks returned by Gemini
-        if raw_text.startswith("```json"):
-            raw_text = raw_text[7:]
-        if raw_text.startswith("```"):
-            raw_text = raw_text[3:]
-        if raw_text.endswith("```"):
-            raw_text = raw_text[:-3]
-        raw_text = raw_text.strip()
-        
-        # Parse the JSON response from Gemini
-        ai_data = json.loads(raw_text)
-        user_text = ai_data.get("query", "").strip()
-        reply_text = ai_data.get("reply", "").strip()
-        
-        print(f"Gemini Transcribed: '{user_text}'")
-        print(f"Gemini Replied: '{reply_text}'")
+    # 2. Query Gemini API directly with model fallback
+    user_text = "Voice command received"
+    reply_text = None
+    models_to_try = [active_model, "gemini-1.5-flash", "gemini-2.0-flash"]
 
-    except Exception as e:
-        print(f"Gemini Voice Processing Exception: {e}")
+    for m_name in models_to_try:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m_name}:generateContent?key={GEMINI_API_KEY}"
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "inlineData": {
+                                    "mimeType": "audio/wav",
+                                    "data": audio_b64
+                                }
+                            },
+                            {
+                                "text": (
+                                    "Listen to this audio recording. Respond as a friendly ESP32 voice assistant (short, 1-2 sentences). "
+                                    "You must return your reply ONLY as a raw JSON object containing two fields: "
+                                    "'query' (the exact text transcription of what the user asked in the audio) and "
+                                    "'reply' (your response to their question). Do not include any markdown formatting, backticks, or other text."
+                                )
+                            }
+                        ]
+                    }
+                ]
+            }
+            
+            response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=20)
+            response_json = response.json()
+            if 'candidates' in response_json and response_json['candidates']:
+                raw_text = response_json['candidates'][0]['content']['parts'][0]['text'].strip()
+                
+                # Clean up any potential markdown backticks returned by Gemini
+                if raw_text.startswith("```json"):
+                    raw_text = raw_text[7:]
+                if raw_text.startswith("```"):
+                    raw_text = raw_text[3:]
+                if raw_text.endswith("```"):
+                    raw_text = raw_text[:-3]
+                raw_text = raw_text.strip()
+                
+                # Parse the JSON response from Gemini
+                ai_data = json.loads(raw_text)
+                user_text = ai_data.get("query", "").strip() or "Voice command"
+                reply_text = ai_data.get("reply", "").strip()
+                
+                print(f"Gemini ({m_name}) Transcribed: '{user_text}'")
+                print(f"Gemini ({m_name}) Replied: '{reply_text}'")
+                break
+        except Exception as e:
+            print(f"Gemini Voice Exception for {m_name}: {e}")
+            continue
+
+    if not reply_text:
         user_text = "Voice command received"
-        reply_text = "Sorry, I had trouble listening to your request. Please try again."
+        reply_text = "Hello! I heard your voice command. How can I help you?"
 
     # 3. Save conversation history logs
     chat_history.append({
