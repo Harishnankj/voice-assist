@@ -523,10 +523,13 @@
 
     <script>
         const DEFAULT_CLOUD_URL = 'https://voice-assist-bi8y.onrender.com';
-        const DEFAULT_LOCAL_URL = 'https://voice-assist-bi8y.onrender.com';
         
-        // Auto-detect or retrieve stored server URL preference
-        let API_BASE = localStorage.getItem('voice_assistant_api_url') || DEFAULT_LOCAL_URL;
+        let storedUrl = localStorage.getItem('voice_assistant_api_url');
+        if (window.location.protocol === 'https:' && storedUrl && storedUrl.startsWith('http://')) {
+            storedUrl = DEFAULT_CLOUD_URL;
+            localStorage.setItem('voice_assistant_api_url', DEFAULT_CLOUD_URL);
+        }
+        let API_BASE = storedUrl || DEFAULT_CLOUD_URL;
 
         function getFetchOptions(customOptions = {}) {
             const headers = {};
