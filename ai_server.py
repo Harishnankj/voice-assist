@@ -171,6 +171,7 @@ def process_text_chat():
         "timestamp": timestamp
     })
 
+    reply_text = None
     if not GEMINI_API_KEY:
         reply_text = "Gemini key is missing. Please configure it in your Render settings."
     else:
