@@ -26,12 +26,42 @@ pending_esp_audio = None             # Audio URL queued for ESP32 hardware playb
 chat_history = []                  # In-memory chat transcripts logs
 esp_state = "idle"                 # ESP32 hardware state ("idle", "listening", "processing", "speaking")
 
-# Retrieve Gemini API Key from environment
-GEMINI_API_KEY = (os.environ.get("GEMINI_API_KEY") or "").strip()
+# Retrieve Gemini API Key from environment (strip spaces, quotes, newlines)
+GEMINI_API_KEY = (os.environ.get("GEMINI_API_KEY") or "").strip().strip('"').strip("'")
 if GEMINI_API_KEY:
-    print("Gemini API configured successfully.")
+    masked = GEMINI_API_KEY[:4] + "..." + GEMINI_API_KEY[-4:] if len(GEMINI_API_KEY) > 8 else "too_short"
+    print(f"Gemini API configured (Key: {masked}).")
 else:
     print("WARNING: GEMINI_API_KEY environment variable is not set.")
+
+@app.route('/api_key_check')
+def check_key():
+    """Diagnostic route to test Gemini API key validity directly against Google API"""
+    if not GEMINI_API_KEY:
+        return jsonify({"status": "missing", "message": "GEMINI_API_KEY is not set in Render environment variables"})
+    
+    masked_key = GEMINI_API_KEY[:4] + "..." + GEMINI_API_KEY[-4:] if len(GEMINI_API_KEY) > 8 else "too_short"
+    
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
+        r = requests.get(url, timeout=5)
+        res = r.json()
+        if r.status_code == 200 and "models" in res:
+            valid_models = [m["name"].replace("models/", "") for m in res["models"] if "generateContent" in m.get("supportedGenerationMethods", [])]
+            return jsonify({
+                "status": "valid",
+                "masked_key": masked_key,
+                "available_models": valid_models
+            })
+        else:
+            return jsonify({
+                "status": "invalid",
+                "masked_key": masked_key,
+                "http_status": r.status_code,
+                "google_error": res.get("error", {})
+            }), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 def text_to_speech(text, output_path):
     """Synthesize high-quality text-to-speech using Microsoft Edge TTS in a dedicated loop"""
