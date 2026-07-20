@@ -64,17 +64,20 @@ def check_key():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 def text_to_speech(text, output_path):
-    """Synthesize high-quality text-to-speech using Microsoft Edge TTS in a dedicated loop"""
+    """Synthesize high-quality text-to-speech using Microsoft Edge TTS with thread-safe runner"""
     async def _generate():
         communicate = edge_tts.Communicate(text, "en-US-EmmaMultilingualNeural")
         await communicate.save(output_path)
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     try:
-        loop.run_until_complete(_generate())
-    finally:
-        loop.close()
+        asyncio.run(_generate())
+    except Exception:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(_generate())
+        finally:
+            loop.close()
 
 def get_current_timestamp():
     """Return HH:MM:SS time string"""
