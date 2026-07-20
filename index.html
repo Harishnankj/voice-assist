@@ -761,25 +761,91 @@
             chatArea.scrollTop = chatArea.scrollHeight;
         }
 
-        // Send text message
+        function appendSingleMessage(msg) {
+            const chatArea = document.getElementById('chatArea');
+            const emptyState = document.getElementById('emptyState');
+            if (emptyState) emptyState.style.display = 'none';
+
+            const isUser = msg.sender === 'user';
+            const bubble = document.createElement('div');
+            bubble.className = `message-bubble ${isUser ? 'message-user' : 'message-assistant'}`;
+
+            const meta = document.createElement('div');
+            meta.className = 'message-meta';
+            const sourceLabel = msg.source === 'voice' ? '🎙️ Voice' : '💻 Web';
+            meta.innerHTML = `
+                <span class="source-tag">${sourceLabel}</span>
+                <span>${msg.timestamp || new Date().toLocaleTimeString()}</span>
+            `;
+            bubble.appendChild(meta);
+
+            const textSpan = document.createElement('div');
+            textSpan.className = 'message-text';
+            textSpan.textContent = msg.text;
+            bubble.appendChild(textSpan);
+
+            if (!isUser && msg.audio) {
+                const audioPlayer = document.createElement('div');
+                audioPlayer.className = 'audio-player-bar';
+                audioPlayer.innerHTML = `
+                    <button class="play-btn" onclick="playAudio('${msg.audio}', this)">▶</button>
+                    <span class="audio-info">Voice Output</span>
+                `;
+                bubble.appendChild(audioPlayer);
+            }
+
+            chatArea.appendChild(bubble);
+            scrollToBottom();
+        }
+
+        // Send text message with instant UI feedback
         async function sendTextMessage() {
             const input = document.getElementById('textInput');
             const text = input.value.trim();
             if (!text) return;
 
             input.value = '';
+            
+            // Render user bubble immediately
+            appendSingleMessage({
+                sender: 'user',
+                text: text,
+                source: 'web',
+                timestamp: new Date().toLocaleTimeString()
+            });
             showTyping(true);
 
             try {
-                await fetch(API_BASE + '/chat', getFetchOptions({
+                const response = await fetch(API_BASE + '/chat', getFetchOptions({
                     method: 'POST',
                     body: JSON.stringify({ text: text })
                 }));
+                const data = await response.json();
                 showTyping(false);
-                fetchHistory();
+
+                if (data.reply) {
+                    appendSingleMessage({
+                        sender: 'assistant',
+                        text: data.reply,
+                        source: 'web',
+                        audio: data.audio,
+                        timestamp: new Date().toLocaleTimeString()
+                    });
+                    if (data.audio) {
+                        const audio = new Audio(data.audio);
+                        audio.play().catch(e => console.log('Autoplay deferred:', e));
+                    }
+                }
             } catch (error) {
                 console.error("Error sending message:", error);
                 showTyping(false);
+                appendSingleMessage({
+                    sender: 'assistant',
+                    text: "Sorry, I had trouble reaching the server. Please try again.",
+                    source: 'web',
+                    audio: null,
+                    timestamp: new Date().toLocaleTimeString()
+                });
             }
         }
 
