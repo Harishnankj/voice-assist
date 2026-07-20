@@ -102,38 +102,55 @@ def handle_name_select():
 
 WORKING_MODELS_CACHE = []
 
-def call_gemini_api(prompt_text, inline_audio_b64=None):
-    """Call Google Gemini API with automatic model/version fallback and zero-latency caching"""
-    global WORKING_MODELS_CACHE, active_model
+def get_valid_gemini_models():
+    """Query Google API ListModels once to discover exact available model identifiers for this API key"""
+    global WORKING_MODELS_CACHE
+    if WORKING_MODELS_CACHE:
+        return WORKING_MODELS_CACHE
+
     if not GEMINI_API_KEY:
-        return None, "Gemini API key is not configured"
+        return []
 
-    candidates = []
-    sel_model = active_model or "gemini-1.5-flash"
+    discovered = []
+    for ver in ["v1beta", "v1"]:
+        try:
+            url = f"https://generativelanguage.googleapis.com/{ver}/models?key={GEMINI_API_KEY}"
+            r = requests.get(url, timeout=6)
+            data = r.json()
+            if "models" in data:
+                for m in data["models"]:
+                    name = m.get("name", "")
+                    methods = m.get("supportedGenerationMethods", [])
+                    if "generateContent" in methods:
+                        clean_name = name.replace("models/", "")
+                        discovered.append((ver, clean_name))
+        except Exception as e:
+            print(f"ListModels error for {ver}: {e}")
 
-    # 1. Try cached working endpoint/model pairs first
-    for ver, m in WORKING_MODELS_CACHE:
-        if (ver, m) not in candidates:
-            candidates.append((ver, m))
-
-    # 2. Add fallback variants across API versions (v1 and v1beta)
-    model_variants = [
-        ("v1", sel_model),
-        ("v1beta", sel_model),
-        ("v1beta", "gemini-1.5-flash-latest"),
-        ("v1beta", "gemini-1.5-flash-001"),
+    defaults = [
+        ("v1beta", "gemini-1.5-flash"),
         ("v1", "gemini-1.5-flash"),
+        ("v1beta", "gemini-1.5-flash-latest"),
         ("v1beta", "gemini-2.0-flash"),
-        ("v1beta", "gemini-1.5-pro"),
-        ("v1beta", "gemini-pro")
+        ("v1beta", "gemini-1.5-pro")
     ]
-    for ver, m in model_variants:
-        if (ver, m) not in candidates:
-            candidates.append((ver, m))
+    for d in defaults:
+        if d not in discovered:
+            discovered.append(d)
 
+    WORKING_MODELS_CACHE = discovered
+    print(f"Discovered working Gemini models for API key: {WORKING_MODELS_CACHE}")
+    return WORKING_MODELS_CACHE
+
+def call_gemini_api(prompt_text, inline_audio_b64=None):
+    """Call Google Gemini API using dynamically discovered working models for this key"""
+    if not GEMINI_API_KEY:
+        return None, "GEMINI_API_KEY environment variable is not set"
+
+    models_to_try = get_valid_gemini_models()
     last_err = "No response from Gemini API"
 
-    for ver, m_name in candidates:
+    for ver, m_name in models_to_try:
         try:
             url = f"https://generativelanguage.googleapis.com/{ver}/models/{m_name}:generateContent?key={GEMINI_API_KEY}"
             parts = []
@@ -152,8 +169,6 @@ def call_gemini_api(prompt_text, inline_audio_b64=None):
 
             if 'candidates' in res_json and res_json['candidates']:
                 raw_text = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
-                if (ver, m_name) not in WORKING_MODELS_CACHE:
-                    WORKING_MODELS_CACHE.insert(0, (ver, m_name))
                 print(f"Gemini API Success ({ver}/{m_name}): '{raw_text[:50]}...'")
                 return raw_text, None
 
