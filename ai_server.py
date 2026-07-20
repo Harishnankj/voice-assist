@@ -175,53 +175,35 @@ def process_text_chat():
         reply_text = "Gemini key is missing. Please configure it in your Render settings."
     else:
         try:
-            # Dynamically discover supported model identifiers for this API key
-            targets_to_try = get_working_gemini_models()
-            
-            reply_text = None
-            last_error_msg = "No response from Gemini API"
-            
-            for ver, m_name in targets_to_try:
-                try:
-                    url = f"https://generativelanguage.googleapis.com/{ver}/models/{m_name}:generateContent?key={GEMINI_API_KEY}"
-                    payload = {
-                        "contents": [
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
                             {
-                                "parts": [
-                                    {
-                                        "text": (
-                                            f"Your name is '{assistant_name}', a friendly ESP32 humanoid robot voice assistant. "
-                                            f"Answer the user's question accurately and helpfully. "
-                                            f"Keep your response short, conversational, and limited to 1 or 2 sentences. "
-                                            f"User asked: {user_text}"
-                                        )
-                                    }
-                                ]
+                                "text": (
+                                    f"Your name is '{assistant_name}', a friendly ESP32 humanoid robot voice assistant. "
+                                    f"Answer the user's question accurately, directly, and helpfully. "
+                                    f"Keep your response short, conversational, and limited to 1 or 2 sentences. "
+                                    f"User asked: {user_text}"
+                                )
                             }
                         ]
                     }
-                    response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=15)
-                    res_json = response.json()
-                    
-                    if 'candidates' in res_json and res_json['candidates']:
-                        candidate = res_json['candidates'][0]
-                        if 'content' in candidate and 'parts' in candidate['content']:
-                            reply_text = candidate['content']['parts'][0]['text'].strip()
-                            print(f"Gemini AI ({m_name}) Reply: '{reply_text}'")
-                            break
-                    
-                    if 'error' in res_json:
-                        last_error_msg = res_json['error'].get('message', str(res_json['error']))
-                        print(f"Gemini API ({m_name}) error: {last_error_msg}")
-                    else:
-                        print(f"Gemini API ({m_name}) payload without candidates: {res_json}")
-                except Exception as inner_e:
-                    last_error_msg = str(inner_e)
-                    print(f"Gemini model {m_name} exception: {inner_e}")
-                    continue
-
+                ]
+            }
+            response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=10)
+            res_json = response.json()
+            
+            if 'candidates' in res_json and res_json['candidates']:
+                candidate = res_json['candidates'][0]
+                if 'content' in candidate and 'parts' in candidate['content']:
+                    reply_text = candidate['content']['parts'][0]['text'].strip()
+                    print(f"Gemini AI Reply: '{reply_text}'")
+            
             if not reply_text:
-                reply_text = f"I couldn't process that. (Gemini: {last_error_msg})"
+                err_detail = res_json.get('error', {}).get('message', 'No reply candidate')
+                reply_text = f"I couldn't process that. ({err_detail})"
         except Exception as e:
             print(f"Gemini API Exception: {e}")
             reply_text = f"API Error: {str(e)}"
