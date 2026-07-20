@@ -476,11 +476,11 @@
             
             <div class="header-controls">
                 <div class="model-selector-container">
-                    <label for="serverSelect">Server:</label>
-                    <select id="serverSelect" onchange="changeServer()">
-                        <option value="https://voice-assist-bi8y.onrender.com">Render Cloud (Default)</option>
-                        <option value="https://orange-spiders-serve.loca.lt">Local Tunnel (HTTPS)</option>
-                        <option value="http://localhost:5000">Localhost (5000)</option>
+                    <label for="modelSelect">Gemini Model:</label>
+                    <select id="modelSelect" onchange="changeModel()">
+                        <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast)</option>
+                        <option value="gemini-1.5-pro">Gemini 1.5 Pro (Smart)</option>
+                        <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
                     </select>
                 </div>
                 <div class="model-selector-container">
@@ -518,17 +518,10 @@
     </div>
 
     <script>
-        const DEFAULT_CLOUD_URL = 'https://voice-assist-bi8y.onrender.com';
-        
-        let storedUrl = localStorage.getItem('voice_assistant_api_url');
-        if (window.location.protocol === 'https:' && storedUrl && storedUrl.startsWith('http://')) {
-            storedUrl = DEFAULT_CLOUD_URL;
-            localStorage.setItem('voice_assistant_api_url', DEFAULT_CLOUD_URL);
-        }
-        let API_BASE = storedUrl || DEFAULT_CLOUD_URL;
+        const API_BASE = 'https://voice-assist-bi8y.onrender.com';
 
         function getApiUrl(endpoint) {
-            const base = (API_BASE || DEFAULT_CLOUD_URL).trim().replace(/\/+$/, '');
+            const base = API_BASE.trim().replace(/\/+$/, '');
             const path = endpoint.trim().replace(/^\/+/, '');
             return base + '/' + path;
         }
@@ -537,9 +530,6 @@
             const headers = {};
             if (customOptions.method && customOptions.method !== 'GET') {
                 headers['Content-Type'] = 'application/json';
-            }
-            if (API_BASE.includes('loca.lt')) {
-                headers['bypass-tunnel-reminder'] = 'true';
             }
             return {
                 ...customOptions,
@@ -550,19 +540,32 @@
             };
         }
 
-        function initServerConfig() {
-            const select = document.getElementById('serverSelect');
-            if (select) {
-                select.value = API_BASE;
+        async function loadActiveModel() {
+            try {
+                const response = await fetch(getApiUrl('model'), getFetchOptions());
+                const data = await response.json();
+                if (data.active_model && document.getElementById('modelSelect')) {
+                    document.getElementById('modelSelect').value = data.active_model;
+                }
+            } catch (error) {
+                console.error("Error loading active model:", error);
             }
         }
 
-        function changeServer() {
-            const select = document.getElementById('serverSelect');
-            API_BASE = select.value;
-            localStorage.setItem('voice_assistant_api_url', API_BASE);
-            console.log('Switched API server to:', API_BASE);
-            fetchHistory();
+        async function changeModel() {
+            const select = document.getElementById('modelSelect');
+            if (!select) return;
+            const selectedModel = select.value;
+            try {
+                const response = await fetch(getApiUrl('model'), getFetchOptions({
+                    method: 'POST',
+                    body: JSON.stringify({ model: selectedModel })
+                }));
+                const data = await response.json();
+                console.log('Server Gemini model updated to:', data);
+            } catch (error) {
+                console.error('Failed to change Gemini model:', error);
+            }
         }
 
         let lastMessageCount = 0;
@@ -953,7 +956,7 @@
         }
 
         window.onload = () => {
-            initServerConfig();
+            loadActiveModel();
             loadAssistantName();
             fetchHistory();
             setInterval(fetchHistory, 2000);
