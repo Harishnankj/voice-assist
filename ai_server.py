@@ -84,12 +84,9 @@ def handle_model_select():
     
     return jsonify({"active_model": active_model})
 
-@app.route('/chat', methods=['POST', 'OPTIONS'])
+@app.route('/chat', methods=['POST'])
 def process_text_chat():
     """Handle text chat submissions from the Web UI dashboard"""
-    if request.method == 'OPTIONS':
-        return jsonify({"status": "ok"}), 200
-
     global active_model
     data = request.get_json() or {}
     user_text = data.get("text", "").strip()

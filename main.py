@@ -12,7 +12,7 @@ import edge_tts
 # Configure Flask template folder and enable bulletproof CORS
 root_dir = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, template_folder=root_dir)
-CORS(app, resources={r"/*": {"origins": "*", "allow_headers": "*", "methods": "*"}})
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Ensure static directory exists to save response speech files
 STATIC_DIR = os.path.join(app.root_path, 'static')
@@ -69,12 +69,9 @@ def handle_model_select():
     
     return jsonify({"active_model": active_model})
 
-@app.route('/chat', methods=['POST', 'OPTIONS'])
+@app.route('/chat', methods=['POST'])
 def process_text_chat():
     """Handle text chat submissions from the Web UI dashboard"""
-    if request.method == 'OPTIONS':
-        return jsonify({"status": "ok"}), 200
-
     global active_model
     data = request.get_json() or {}
     user_text = data.get("text", "").strip()
@@ -161,12 +158,9 @@ def process_text_chat():
         "audio": audio_url
     })
 
-@app.route('/voice', methods=['POST', 'OPTIONS'])
+@app.route('/voice', methods=['POST'])
 def process_voice():
     """Handle audio upload recordings from the ESP32 hardware client"""
-    if request.method == 'OPTIONS':
-        return jsonify({"status": "ok"}), 200
-
     global active_model
     
     if not request.data:
