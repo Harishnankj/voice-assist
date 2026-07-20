@@ -111,9 +111,10 @@ def process_text_chat():
         reply_text = "Gemini key is missing. Please configure it in your Render settings."
     else:
         try:
-            # Model retry cascade
-            models_to_try = [active_model, "gemini-1.5-flash", "gemini-2.0-flash"]
+            # Model retry cascade with standard Gemini model names
+            models_to_try = [active_model, "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp", "gemini-pro"]
             reply_text = None
+            last_error_msg = "No response from Gemini API"
             
             for m_name in models_to_try:
                 try:
@@ -125,7 +126,7 @@ def process_text_chat():
                                     {
                                         "text": (
                                             f"Your name is '{assistant_name}', a friendly ESP32 humanoid robot voice assistant. "
-                                            f"If the user addresses you by your name '{assistant_name}' or asks who you are, respond naturally acknowledging your name. "
+                                            f"Answer the user's question accurately and helpfully. "
                                             f"Keep your response short, conversational, and limited to 1 or 2 sentences. "
                                             f"User asked: {user_text}"
                                         )
@@ -134,23 +135,31 @@ def process_text_chat():
                             }
                         ]
                     }
-                    response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=10)
+                    response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=15)
                     res_json = response.json()
+                    
                     if 'candidates' in res_json and res_json['candidates']:
-                        reply_text = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
-                        print(f"Gemini AI ({m_name}) Reply: '{reply_text}'")
-                        break
+                        candidate = res_json['candidates'][0]
+                        if 'content' in candidate and 'parts' in candidate['content']:
+                            reply_text = candidate['content']['parts'][0]['text'].strip()
+                            print(f"Gemini AI ({m_name}) Reply: '{reply_text}'")
+                            break
+                    
+                    if 'error' in res_json:
+                        last_error_msg = res_json['error'].get('message', str(res_json['error']))
+                        print(f"Gemini API ({m_name}) error: {last_error_msg}")
                     else:
-                        print(f"Gemini API error payload for {m_name}: {res_json}")
+                        print(f"Gemini API ({m_name}) payload without candidates: {res_json}")
                 except Exception as inner_e:
+                    last_error_msg = str(inner_e)
                     print(f"Gemini model {m_name} exception: {inner_e}")
                     continue
 
             if not reply_text:
-                reply_text = "Hello! I am your AI voice assistant. How can I help you today?"
+                reply_text = f"I couldn't process that. (Gemini: {last_error_msg})"
         except Exception as e:
             print(f"Gemini API Exception: {e}")
-            reply_text = "Hello! I am your AI voice assistant. How can I help you today?"
+            reply_text = f"API Error: {str(e)}"
 
     # Text-to-Speech (TTS) with graceful fallback
     audio_url = None
