@@ -514,10 +514,13 @@
     </div>
 
     <script>
-        // API Base URL (auto-detects GitHub Pages vs local server)
-        const API_BASE = window.location.hostname.includes('github.io')
-            ? 'https://voice-assist-bi8y.onrender.com'
-            : '';
+        // API Base URL (defaults to Render cloud server for GitHub Pages & local files)
+        const DEFAULT_CLOUD_URL = 'https://voice-assist-bi8y.onrender.com';
+        let API_BASE = localStorage.getItem('voice_assistant_api_url') || (
+            (window.location.protocol === 'file:' || window.location.hostname.includes('github.io') || !window.location.hostname || window.location.hostname === 'localhost')
+                ? DEFAULT_CLOUD_URL
+                : ''
+        );
 
         let lastMessageCount = 0;
         let isRecording = false;
