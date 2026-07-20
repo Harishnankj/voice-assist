@@ -825,32 +825,39 @@
             showTyping(true);
 
             try {
-                const response = await fetch(getApiUrl('chat'), getFetchOptions({
+                const url = getApiUrl('chat');
+                console.log('Sending chat POST to:', url);
+                const response = await fetch(url, getFetchOptions({
                     method: 'POST',
                     body: JSON.stringify({ text: text })
                 }));
+                
+                if (!response.ok) {
+                    throw new Error('Server returned HTTP ' + response.status);
+                }
+
                 const data = await response.json();
                 showTyping(false);
 
-                if (data.reply) {
-                    appendSingleMessage({
-                        sender: 'assistant',
-                        text: data.reply,
-                        source: 'web',
-                        audio: data.audio,
-                        timestamp: new Date().toLocaleTimeString()
-                    });
-                    if (data.audio) {
-                        const audio = new Audio(data.audio);
-                        audio.play().catch(e => console.log('Autoplay deferred:', e));
-                    }
+                const replyText = data.reply || data.text || "Hello! I am your AI voice assistant. How can I help you?";
+                appendSingleMessage({
+                    sender: 'assistant',
+                    text: replyText,
+                    source: 'web',
+                    audio: data.audio,
+                    timestamp: new Date().toLocaleTimeString()
+                });
+
+                if (data.audio) {
+                    const audio = new Audio(data.audio);
+                    audio.play().catch(e => console.log('Autoplay deferred:', e));
                 }
             } catch (error) {
                 console.error("Error sending message:", error);
                 showTyping(false);
                 appendSingleMessage({
                     sender: 'assistant',
-                    text: "Sorry, I had trouble reaching the server. Please try again.",
+                    text: "Sorry, I had trouble reaching the server (" + error.message + "). Please try again.",
                     source: 'web',
                     audio: null,
                     timestamp: new Date().toLocaleTimeString()
