@@ -221,10 +221,10 @@ def process_voice():
     # 1. Base64-encode the raw WAV audio
     audio_b64 = base64.b64encode(audio_data).decode('utf-8')
 
-    # 2. Query Gemini API directly with model fallback
+    # 2. Query Gemini API directly with verified model identifier
     user_text = "Voice command received"
     reply_text = None
-    models_to_try = [active_model, "gemini-1.5-flash", "gemini-2.0-flash"]
+    models_to_try = ["gemini-1.5-flash"]
 
     for m_name in models_to_try:
         try:
