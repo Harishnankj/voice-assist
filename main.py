@@ -12,20 +12,20 @@ import edge_tts
 root_dir = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, template_folder=root_dir)
 
-# Enable CORS manually to allow the webpage hosted on GitHub Pages to communicate with Render
+# Enable CORS manually to allow the webpage hosted on GitHub Pages to communicate with Render/Tunnel
 @app.before_request
 def handle_preflight():
     if request.method == "OPTIONS":
         response = app.make_default_options_response()
         response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization, bypass-tunnel-reminder")
         response.headers.add("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
         return response
 
 @app.after_request
 def add_cors_headers(response):
     response.headers.add("Access-Control-Allow-Origin", "*")
-    response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization, bypass-tunnel-reminder")
     response.headers.add("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
     return response
 

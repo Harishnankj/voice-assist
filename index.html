@@ -478,6 +478,7 @@
                 <div class="model-selector-container">
                     <label for="serverSelect">Server:</label>
                     <select id="serverSelect" onchange="changeServer()">
+                        <option value="https://mean-candies-lie.loca.lt">Local Tunnel (HTTPS)</option>
                         <option value="http://localhost:5000">Localhost (5000)</option>
                         <option value="https://voice-assist-bi8y.onrender.com">Render Cloud</option>
                     </select>
@@ -522,10 +523,21 @@
 
     <script>
         const DEFAULT_CLOUD_URL = 'https://voice-assist-bi8y.onrender.com';
-        const DEFAULT_LOCAL_URL = 'http://localhost:5000';
+        const DEFAULT_LOCAL_URL = 'https://mean-candies-lie.loca.lt';
         
         // Auto-detect or retrieve stored server URL preference
         let API_BASE = localStorage.getItem('voice_assistant_api_url') || DEFAULT_LOCAL_URL;
+
+        function getFetchOptions(customOptions = {}) {
+            return {
+                ...customOptions,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'bypass-tunnel-reminder': 'true',
+                    ...(customOptions.headers || {})
+                }
+            };
+        }
 
         function initServerConfig() {
             const select = document.getElementById('serverSelect');
@@ -621,15 +633,15 @@
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 8000);
                 
-                const response = await fetch(API_BASE + '/history', { 
+                const response = await fetch(API_BASE + '/history', getFetchOptions({ 
                     method: 'GET',
                     signal: controller.signal
-                });
+                }));
                 clearTimeout(timeoutId);
 
                 if (response.ok) {
                     dot.className = 'status-dot online';
-                    text.textContent = 'Render Cloud Online';
+                    text.textContent = API_BASE.includes('loca.lt') ? 'Local Tunnel Online' : (API_BASE.includes('localhost') ? 'Localhost Online' : 'Render Cloud Online');
                 } else {
                     dot.className = 'status-dot offline';
                     text.textContent = 'Server Error (' + response.status + ')';
@@ -637,7 +649,7 @@
             } catch (e) {
                 if (e.name === 'AbortError') {
                     dot.className = 'status-dot';
-                    text.textContent = 'Waking Cloud Server... (Wait 30s)';
+                    text.textContent = 'Waking Server... (Wait 30s)';
                 } else {
                     dot.className = 'status-dot offline';
                     text.textContent = 'Server Offline';
@@ -651,7 +663,7 @@
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-                const response = await fetch(API_BASE + '/history', { signal: controller.signal });
+                const response = await fetch(API_BASE + '/history', getFetchOptions({ signal: controller.signal }));
                 clearTimeout(timeoutId);
                 const data = await response.json();
                 
@@ -663,7 +675,7 @@
                 const dot = document.getElementById('statusDot');
                 const text = document.getElementById('statusText');
                 dot.className = 'status-dot online';
-                text.textContent = 'Render Cloud Online';
+                text.textContent = API_BASE.includes('loca.lt') ? 'Local Tunnel Online' : (API_BASE.includes('localhost') ? 'Localhost Online' : 'Render Cloud Online');
             } catch (error) {
                 checkServerHealth();
             }
@@ -753,11 +765,10 @@
             showTyping(true);
 
             try {
-                await fetch(API_BASE + '/chat', {
+                await fetch(API_BASE + '/chat', getFetchOptions({
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text: text })
-                });
+                }));
                 showTyping(false);
                 fetchHistory();
             } catch (error) {
@@ -783,11 +794,10 @@
             const select = document.getElementById('modelSelect');
             const model = select.value;
             try {
-                await fetch(API_BASE + '/model', {
+                await fetch(API_BASE + '/model', getFetchOptions({
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ model: model })
-                });
+                }));
             } catch (error) {
                 console.error("Error setting active model:", error);
             }
@@ -795,7 +805,7 @@
 
         async function loadSelectedModel() {
             try {
-                const response = await fetch(API_BASE + '/model');
+                const response = await fetch(API_BASE + '/model', getFetchOptions());
                 const data = await response.json();
                 if (data.active_model) {
                     document.getElementById('modelSelect').value = data.active_model;
