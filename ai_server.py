@@ -41,7 +41,7 @@ pending_esp_audio = None             # Audio URL queued for ESP32 hardware playb
 chat_history = []                  # In-memory chat transcripts logs
 
 # Retrieve Gemini API Key from environment
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_API_KEY = (os.environ.get("GEMINI_API_KEY") or "").strip()
 if GEMINI_API_KEY:
     print("Gemini API configured successfully.")
 else:
