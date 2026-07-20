@@ -476,6 +476,13 @@
             
             <div class="header-controls">
                 <div class="model-selector-container">
+                    <label for="serverSelect">Server:</label>
+                    <select id="serverSelect" onchange="changeServer()">
+                        <option value="http://localhost:5000">Localhost (5000)</option>
+                        <option value="https://voice-assist-bi8y.onrender.com">Render Cloud</option>
+                    </select>
+                </div>
+                <div class="model-selector-container">
                     <label for="modelSelect">Brain:</label>
                     <select id="modelSelect" onchange="changeModel()">
                         <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
@@ -514,13 +521,26 @@
     </div>
 
     <script>
-        // API Base URL (defaults to Render cloud server for GitHub Pages & local files)
         const DEFAULT_CLOUD_URL = 'https://voice-assist-bi8y.onrender.com';
-        let API_BASE = localStorage.getItem('voice_assistant_api_url') || (
-            (window.location.protocol === 'file:' || window.location.hostname.includes('github.io') || !window.location.hostname || window.location.hostname === 'localhost')
-                ? DEFAULT_CLOUD_URL
-                : ''
-        );
+        const DEFAULT_LOCAL_URL = 'http://localhost:5000';
+        
+        // Auto-detect or retrieve stored server URL preference
+        let API_BASE = localStorage.getItem('voice_assistant_api_url') || DEFAULT_LOCAL_URL;
+
+        function initServerConfig() {
+            const select = document.getElementById('serverSelect');
+            if (select) {
+                select.value = API_BASE;
+            }
+        }
+
+        function changeServer() {
+            const select = document.getElementById('serverSelect');
+            API_BASE = select.value;
+            localStorage.setItem('voice_assistant_api_url', API_BASE);
+            console.log('Switched API server to:', API_BASE);
+            fetchHistory();
+        }
 
         let lastMessageCount = 0;
         let isRecording = false;
@@ -829,6 +849,7 @@
         }
 
         window.onload = () => {
+            initServerConfig();
             loadSelectedModel();
             fetchHistory();
             setInterval(fetchHistory, 2000);
