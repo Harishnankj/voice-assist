@@ -588,25 +588,48 @@
         async function checkServerHealth() {
             const dot = document.getElementById('statusDot');
             const text = document.getElementById('statusText');
+            
+            // Set initial state if still on Connecting
+            if (text.textContent === 'Connecting...') {
+                text.textContent = 'Waking up server...';
+            }
+
             try {
-                const response = await fetch(API_BASE + '/history', { method: 'GET' });
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000);
+                
+                const response = await fetch(API_BASE + '/history', { 
+                    method: 'GET',
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+
                 if (response.ok) {
                     dot.className = 'status-dot online';
                     text.textContent = 'Render Cloud Online';
                 } else {
                     dot.className = 'status-dot offline';
-                    text.textContent = 'Server Unreachable';
+                    text.textContent = 'Server Error (' + response.status + ')';
                 }
             } catch (e) {
-                dot.className = 'status-dot offline';
-                text.textContent = 'Offline';
+                if (e.name === 'AbortError') {
+                    dot.className = 'status-dot';
+                    text.textContent = 'Waking Cloud Server... (Wait 30s)';
+                } else {
+                    dot.className = 'status-dot offline';
+                    text.textContent = 'Server Offline';
+                }
             }
         }
 
         // Fetch chat history from backend
         async function fetchHistory() {
             try {
-                const response = await fetch(API_BASE + '/history');
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+                const response = await fetch(API_BASE + '/history', { signal: controller.signal });
+                clearTimeout(timeoutId);
                 const data = await response.json();
                 
                 if (data.history && data.history.length !== lastMessageCount) {
@@ -614,9 +637,11 @@
                     lastMessageCount = data.history.length;
                     scrollToBottom();
                 }
-                checkServerHealth();
+                const dot = document.getElementById('statusDot');
+                const text = document.getElementById('statusText');
+                dot.className = 'status-dot online';
+                text.textContent = 'Render Cloud Online';
             } catch (error) {
-                console.error("Error fetching chat logs:", error);
                 checkServerHealth();
             }
         }
