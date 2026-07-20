@@ -115,44 +115,76 @@ def handle_name_select():
     
     return jsonify({"assistant_name": assistant_name})
 
-def get_working_gemini_models():
-    """Query Google API ListModels to discover exact available model identifiers for this API key"""
+WORKING_MODELS_CACHE = []
+
+def call_gemini_api(prompt_text, inline_audio_b64=None):
+    """Call Google Gemini API with automatic model/version fallback and zero-latency caching"""
+    global WORKING_MODELS_CACHE, active_model
     if not GEMINI_API_KEY:
-        return []
-    
-    discovered = []
-    for ver in ["v1beta", "v1"]:
-        try:
-            res = requests.get(f"https://generativelanguage.googleapis.com/{ver}/models?key={GEMINI_API_KEY}", timeout=5)
-            data = res.json()
-            if "models" in data:
-                for m in data["models"]:
-                    name = m.get("name", "")
-                    methods = m.get("supportedGenerationMethods", [])
-                    if "generateContent" in methods:
-                        clean_name = name.replace("models/", "")
-                        discovered.append((ver, clean_name))
-        except Exception as e:
-            print(f"ListModels error for {ver}: {e}")
-    
-    fallbacks = [
+        return None, "Gemini API key is not configured"
+
+    candidates = []
+    sel_model = active_model or "gemini-1.5-flash"
+
+    # 1. Try cached working endpoint/model pairs first
+    for ver, m in WORKING_MODELS_CACHE:
+        if (ver, m) not in candidates:
+            candidates.append((ver, m))
+
+    # 2. Add fallback variants across API versions (v1 and v1beta)
+    model_variants = [
+        ("v1", sel_model),
+        ("v1beta", sel_model),
         ("v1beta", "gemini-1.5-flash-latest"),
         ("v1beta", "gemini-1.5-flash-001"),
-        ("v1beta", "gemini-1.5-flash"),
         ("v1", "gemini-1.5-flash"),
-        ("v1beta", "gemini-1.0-pro"),
+        ("v1beta", "gemini-2.0-flash"),
+        ("v1beta", "gemini-1.5-pro"),
         ("v1beta", "gemini-pro")
     ]
-    for fb in fallbacks:
-        if fb not in discovered:
-            discovered.append(fb)
-            
-    return discovered
+    for ver, m in model_variants:
+        if (ver, m) not in candidates:
+            candidates.append((ver, m))
+
+    last_err = "No response from Gemini API"
+
+    for ver, m_name in candidates:
+        try:
+            url = f"https://generativelanguage.googleapis.com/{ver}/models/{m_name}:generateContent?key={GEMINI_API_KEY}"
+            parts = []
+            if inline_audio_b64:
+                parts.append({
+                    "inlineData": {
+                        "mimeType": "audio/wav",
+                        "data": inline_audio_b64
+                    }
+                })
+            parts.append({"text": prompt_text})
+
+            payload = {"contents": [{"parts": parts}]}
+            response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=12)
+            res_json = response.json()
+
+            if 'candidates' in res_json and res_json['candidates']:
+                raw_text = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
+                if (ver, m_name) not in WORKING_MODELS_CACHE:
+                    WORKING_MODELS_CACHE.insert(0, (ver, m_name))
+                print(f"Gemini API Success ({ver}/{m_name}): '{raw_text[:50]}...'")
+                return raw_text, None
+
+            if 'error' in res_json:
+                last_err = res_json['error'].get('message', str(res_json['error']))
+                print(f"Gemini API ({ver}/{m_name}) error: {last_err}")
+        except Exception as e:
+            last_err = str(e)
+            print(f"Gemini API ({ver}/{m_name}) exception: {e}")
+
+    return None, last_err
 
 @app.route('/chat', methods=['POST'])
 def process_text_chat():
     """Handle text chat submissions from the Web UI dashboard"""
-    global active_model, assistant_name
+    global assistant_name
     data = request.get_json() or {}
     user_text = data.get("text", "").strip()
     
@@ -171,43 +203,18 @@ def process_text_chat():
         "timestamp": timestamp
     })
 
-    reply_text = None
-    if not GEMINI_API_KEY:
-        reply_text = "Gemini key is missing. Please configure it in your Render settings."
+    prompt = (
+        f"Your name is '{assistant_name}', a friendly ESP32 humanoid robot voice assistant. "
+        f"Answer the user's question accurately, directly, and helpfully. "
+        f"Keep your response short, conversational, and limited to 1 or 2 sentences. "
+        f"User asked: {user_text}"
+    )
+
+    raw_text, err = call_gemini_api(prompt)
+    if raw_text:
+        reply_text = raw_text
     else:
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-            payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {
-                                "text": (
-                                    f"Your name is '{assistant_name}', a friendly ESP32 humanoid robot voice assistant. "
-                                    f"Answer the user's question accurately, directly, and helpfully. "
-                                    f"Keep your response short, conversational, and limited to 1 or 2 sentences. "
-                                    f"User asked: {user_text}"
-                                )
-                            }
-                        ]
-                    }
-                ]
-            }
-            response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=10)
-            res_json = response.json()
-            
-            if 'candidates' in res_json and res_json['candidates']:
-                candidate = res_json['candidates'][0]
-                if 'content' in candidate and 'parts' in candidate['content']:
-                    reply_text = candidate['content']['parts'][0]['text'].strip()
-                    print(f"Gemini AI Reply: '{reply_text}'")
-            
-            if not reply_text:
-                err_detail = res_json.get('error', {}).get('message', 'No reply candidate')
-                reply_text = f"I couldn't process that. ({err_detail})"
-        except Exception as e:
-            print(f"Gemini API Exception: {e}")
-            reply_text = f"API Error: {str(e)}"
+        reply_text = f"I couldn't process that. (Gemini: {err})"
 
     # Text-to-Speech (TTS) with graceful fallback
     audio_url = None
@@ -217,6 +224,11 @@ def process_text_chat():
     except Exception as e:
         print(f"TTS Exception (continuing without audio): {e}")
         audio_url = None
+    
+    # Queue audio URL so ESP32 hardware plays it out loud on speaker
+    global pending_esp_audio
+    if audio_url:
+        pending_esp_audio = audio_url
     
     # Save assistant message to history logs
     chat_history.append({
@@ -232,13 +244,11 @@ def process_text_chat():
         "audio": audio_url
     })
 
-@app.route('/voice', methods=['POST', 'OPTIONS'])
+@app.route('/voice', methods=['POST'])
 def process_voice():
     """Handle audio upload recordings from the ESP32 hardware client"""
-    if request.method == 'OPTIONS':
-        return jsonify({"status": "ok"}), 200
-
-    global active_model
+    global assistant_name, esp_state
+    esp_state = "processing"
     
     if not request.data:
         return jsonify({"error": "No audio data received"}), 400
@@ -253,66 +263,36 @@ def process_voice():
     # 1. Base64-encode the raw WAV audio
     audio_b64 = base64.b64encode(audio_data).decode('utf-8')
 
-    # 2. Query Gemini API directly with dynamically discovered working models
-    user_text = "Voice command received"
-    reply_text = None
-    targets_to_try = get_working_gemini_models()
+    # 2. Query Gemini API with Call-by-Name Wake Word Filter
+    prompt = (
+        f"Listen carefully to this audio recording from an ESP32 microphone. "
+        f"1. Determine if the user spoke or addressed the robot assistant by its call name '{assistant_name}' (or similar phonetics like Jarvis/Jarves). "
+        f"2. Transcribe the exact speech into the 'query' field. "
+        f"3. Set 'name_called' to true if the name '{assistant_name}' was called/spoken in the audio, or false if the name was NOT called. "
+        f"4. If 'name_called' is true, answer their question in 'reply' as a polite assistant named '{assistant_name}' (1-2 sentences). If false, set 'reply' to null. "
+        f"Return your reply ONLY as a valid JSON object containing 'name_called', 'query', and 'reply'."
+    )
 
-    for ver, m_name in targets_to_try:
-        try:
-            url = f"https://generativelanguage.googleapis.com/{ver}/models/{m_name}:generateContent?key={GEMINI_API_KEY}"
+    raw_text, err = call_gemini_api(prompt, inline_audio_b64=audio_b64)
     name_called = False
+    user_text = "Voice command"
+    reply_text = None
 
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-        payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {
-                            "inlineData": {
-                                "mimeType": "audio/wav",
-                                "data": audio_b64
-                            }
-                        },
-                        {
-                            "text": (
-                                f"Listen carefully to this audio recording from an ESP32 microphone. "
-                                f"1. Determine if the user spoke or addressed the robot assistant by its call name '{assistant_name}' (or similar phonetics like Jarvis/Jarves). "
-                                f"2. Transcribe the exact speech into the 'query' field. "
-                                f"3. Set 'name_called' to true if the name '{assistant_name}' was called/spoken in the audio, or false if the name was NOT called. "
-                                f"4. If 'name_called' is true, answer their question in 'reply' as a polite assistant named '{assistant_name}' (1-2 sentences). If false, set 'reply' to null. "
-                                f"Return your reply ONLY as a valid JSON object containing 'name_called', 'query', and 'reply'."
-                            )
-                        }
-                    ]
-                }
-            ]
-        }
-        
-        response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=12)
-        response_json = response.json()
-        if 'candidates' in response_json and response_json['candidates']:
-            raw_text = response_json['candidates'][0]['content']['parts'][0]['text'].strip()
-            
-            # Clean up any potential markdown backticks returned by Gemini
-            if raw_text.startswith("```json"):
-                raw_text = raw_text[7:]
-            if raw_text.startswith("```"):
-                raw_text = raw_text[3:]
-            if raw_text.endswith("```"):
-                raw_text = raw_text[:-3]
-            raw_text = raw_text.strip()
-            
-            # Parse the JSON response from Gemini
-            ai_data = json.loads(raw_text)
+    if raw_text:
+        try:
+            clean = raw_text.strip()
+            if clean.startswith("```json"): clean = clean[7:]
+            if clean.startswith("```"): clean = clean[3:]
+            if clean.endswith("```"): clean = clean[:-3]
+            clean = clean.strip()
+
+            ai_data = json.loads(clean)
             name_called = bool(ai_data.get("name_called", False))
             user_text = ai_data.get("query", "").strip() or "Voice command"
             reply_text = ai_data.get("reply", "").strip() if name_called else None
-            
             print(f"Gemini Transcribed: '{user_text}' | Name Called ({assistant_name}): {name_called}")
-    except Exception as e:
-        print(f"Gemini Voice Exception: {e}")
+        except Exception as p_err:
+            print(f"JSON Parse Error: {p_err}")
 
     # Wake Word Filter Enforcement: If assistant name was NOT called, ignore request completely!
     if not name_called or not reply_text:
@@ -323,7 +303,7 @@ def process_voice():
             "reason": f"Assistant name '{assistant_name}' not called in voice command"
         })
 
-    # 3. Save conversation history logs
+    # Save conversation history logs
     chat_history.append({
         "sender": "user",
         "text": user_text,
@@ -332,7 +312,7 @@ def process_voice():
         "timestamp": timestamp
     })
 
-    # 4. Text-to-Speech (TTS)
+    # Text-to-Speech (TTS)
     try:
         text_to_speech(reply_text, RESPONSE_AUDIO_PATH)
         print("Speech synthesis completed.")
@@ -341,7 +321,10 @@ def process_voice():
         return jsonify({"error": "Failed to synthesize speech"}), 500
 
     audio_url = request.url_root + "static/response.mp3"
-    
+    global pending_esp_audio
+    pending_esp_audio = audio_url
+
+    # Save assistant message to history logs
     chat_history.append({
         "sender": "assistant",
         "text": reply_text,
@@ -351,9 +334,9 @@ def process_voice():
     })
 
     return jsonify({
-        "query": user_text,
         "reply": reply_text,
-        "audio": audio_url
+        "audio": audio_url,
+        "query": user_text
     })
 
 # Run Flask locally (only for debugging)
