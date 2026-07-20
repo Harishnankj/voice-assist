@@ -36,6 +36,7 @@ RESPONSE_AUDIO_PATH = os.path.join(STATIC_DIR, 'response.mp3')
 
 # Server configurations
 active_model = "gemini-1.5-flash"  # Default active model
+assistant_name = "Jarvis"            # Default assistant call-by-name identity
 chat_history = []                  # In-memory chat transcripts logs
 
 # Retrieve Gemini API Key from environment

@@ -21,6 +21,7 @@ RESPONSE_AUDIO_PATH = os.path.join(STATIC_DIR, 'response.mp3')
 
 # Server configurations
 active_model = "gemini-1.5-flash"  # Default active model
+assistant_name = "Jarvis"            # Default assistant call-by-name identity
 chat_history = []                  # In-memory chat transcripts logs
 
 # Retrieve Gemini API Key from environment
@@ -69,10 +70,24 @@ def handle_model_select():
     
     return jsonify({"active_model": active_model})
 
+@app.route('/name', methods=['GET', 'POST'])
+def handle_name_select():
+    global assistant_name
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        name = data.get("name", "").strip()
+        if name:
+            assistant_name = name
+            print(f"Server assistant name updated to: {assistant_name}")
+            return jsonify({"status": "success", "assistant_name": assistant_name})
+        return jsonify({"error": "Invalid name selection"}), 400
+    
+    return jsonify({"assistant_name": assistant_name})
+
 @app.route('/chat', methods=['POST'])
 def process_text_chat():
     """Handle text chat submissions from the Web UI dashboard"""
-    global active_model
+    global active_model, assistant_name
     data = request.get_json() or {}
     user_text = data.get("text", "").strip()
     
@@ -108,7 +123,8 @@ def process_text_chat():
                                 "parts": [
                                     {
                                         "text": (
-                                            f"You are a friendly ESP32 voice assistant. "
+                                            f"Your name is '{assistant_name}', a friendly ESP32 humanoid robot voice assistant. "
+                                            f"If the user addresses you by your name '{assistant_name}' or asks who you are, respond naturally acknowledging your name. "
                                             f"Keep your response short, conversational, and limited to 1 or 2 sentences. "
                                             f"User asked: {user_text}"
                                         )
@@ -196,7 +212,8 @@ def process_voice():
                             },
                             {
                                 "text": (
-                                    "Listen to this audio recording. Respond as a friendly ESP32 voice assistant (short, 1-2 sentences). "
+                                    f"Listen to this audio recording. Respond as a friendly humanoid robot voice assistant named '{assistant_name}' (short, 1-2 sentences). "
+                                    f"If the user calls you by your name '{assistant_name}' or asks who you are, acknowledge your name politely. "
                                     "You must return your reply ONLY as a raw JSON object containing two fields: "
                                     "'query' (the exact text transcription of what the user asked in the audio) and "
                                     "'reply' (your response to their question). Do not include any markdown formatting, backticks, or other text."

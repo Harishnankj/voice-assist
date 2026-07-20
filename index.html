@@ -484,12 +484,8 @@
                     </select>
                 </div>
                 <div class="model-selector-container">
-                    <label for="modelSelect">Brain:</label>
-                    <select id="modelSelect" onchange="changeModel()">
-                        <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                        <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                        <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                    </select>
+                    <label for="nameInput">Robot Name:</label>
+                    <input type="text" id="nameInput" value="Jarvis" onchange="changeAssistantName()" style="background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: #fff; border-radius: 6px; padding: 4px 8px; width: 90px; font-size: 0.85rem;" />
                 </div>
                 <button class="icon-btn" onclick="clearHistoryUI()" title="Clear Console Log">🗑️</button>
             </div>
@@ -888,15 +884,28 @@
             }
         }
 
-        async function loadSelectedModel() {
+        async function changeAssistantName() {
+            const input = document.getElementById('nameInput');
+            const name = input ? input.value.trim() : 'Jarvis';
             try {
-                const response = await fetch(getApiUrl('model'), getFetchOptions());
+                await fetch(getApiUrl('name'), getFetchOptions({
+                    method: 'POST',
+                    body: JSON.stringify({ name: name })
+                }));
+            } catch (error) {
+                console.error("Error setting assistant name:", error);
+            }
+        }
+
+        async function loadAssistantName() {
+            try {
+                const response = await fetch(getApiUrl('name'), getFetchOptions());
                 const data = await response.json();
-                if (data.active_model) {
-                    document.getElementById('modelSelect').value = data.active_model;
+                if (data.assistant_name && document.getElementById('nameInput')) {
+                    document.getElementById('nameInput').value = data.assistant_name;
                 }
             } catch (error) {
-                console.error("Error loading model config:", error);
+                console.error("Error loading assistant name:", error);
             }
         }
 
@@ -945,7 +954,7 @@
 
         window.onload = () => {
             initServerConfig();
-            loadSelectedModel();
+            loadAssistantName();
             fetchHistory();
             setInterval(fetchHistory, 2000);
         };
