@@ -531,6 +531,12 @@
         }
         let API_BASE = storedUrl || DEFAULT_CLOUD_URL;
 
+        function getApiUrl(endpoint) {
+            const base = (API_BASE || DEFAULT_CLOUD_URL).trim().replace(/\/+$/, '');
+            const path = endpoint.trim().replace(/^\/+/, '');
+            return base + '/' + path;
+        }
+
         function getFetchOptions(customOptions = {}) {
             const headers = {};
             if (customOptions.method && customOptions.method !== 'GET') {
@@ -642,7 +648,7 @@
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 8000);
                 
-                const response = await fetch(API_BASE + '/history', getFetchOptions({ 
+                const response = await fetch(getApiUrl('history'), getFetchOptions({ 
                     method: 'GET',
                     signal: controller.signal
                 }));
@@ -672,7 +678,7 @@
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-                const response = await fetch(API_BASE + '/history', getFetchOptions({ signal: controller.signal }));
+                const response = await fetch(getApiUrl('history'), getFetchOptions({ signal: controller.signal }));
                 clearTimeout(timeoutId);
                 const data = await response.json();
                 
@@ -819,7 +825,7 @@
             showTyping(true);
 
             try {
-                const response = await fetch(API_BASE + '/chat', getFetchOptions({
+                const response = await fetch(getApiUrl('chat'), getFetchOptions({
                     method: 'POST',
                     body: JSON.stringify({ text: text })
                 }));
@@ -869,7 +875,7 @@
             const select = document.getElementById('modelSelect');
             const model = select.value;
             try {
-                await fetch(API_BASE + '/model', getFetchOptions({
+                await fetch(getApiUrl('model'), getFetchOptions({
                     method: 'POST',
                     body: JSON.stringify({ model: model })
                 }));
@@ -880,7 +886,7 @@
 
         async function loadSelectedModel() {
             try {
-                const response = await fetch(API_BASE + '/model', getFetchOptions());
+                const response = await fetch(getApiUrl('model'), getFetchOptions());
                 const data = await response.json();
                 if (data.active_model) {
                     document.getElementById('modelSelect').value = data.active_model;
