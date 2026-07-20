@@ -128,15 +128,21 @@ def process_text_chat():
         reply_text = "Gemini key is missing. Please configure it in your Render settings."
     else:
         try:
-            # Use verified, active Google Gemini v1beta model identifier: gemini-1.5-flash
-            models_to_try = ["gemini-1.5-flash"]
+            # Multi-endpoint (v1 & v1beta) fallback cascade
+            targets_to_try = [
+                ("v1beta", "gemini-1.5-flash"),
+                ("v1", "gemini-1.5-flash"),
+                ("v1beta", "gemini-2.0-flash"),
+                ("v1beta", "gemini-1.5-pro"),
+                ("v1", "gemini-1.5-pro")
+            ]
             
             reply_text = None
             last_error_msg = "No response from Gemini API"
             
-            for m_name in models_to_try:
+            for ver, m_name in targets_to_try:
                 try:
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{m_name}:generateContent?key={GEMINI_API_KEY}"
+                    url = f"https://generativelanguage.googleapis.com/{ver}/models/{m_name}:generateContent?key={GEMINI_API_KEY}"
                     payload = {
                         "contents": [
                             {
@@ -223,14 +229,20 @@ def process_voice():
     # 1. Base64-encode the raw WAV audio
     audio_b64 = base64.b64encode(audio_data).decode('utf-8')
 
-    # 2. Query Gemini API directly with verified model identifier
+    # 2. Query Gemini API directly with multi-endpoint fallback cascade
     user_text = "Voice command received"
     reply_text = None
-    models_to_try = ["gemini-1.5-flash"]
+    targets_to_try = [
+        ("v1beta", "gemini-1.5-flash"),
+        ("v1", "gemini-1.5-flash"),
+        ("v1beta", "gemini-2.0-flash"),
+        ("v1beta", "gemini-1.5-pro"),
+        ("v1", "gemini-1.5-pro")
+    ]
 
-    for m_name in models_to_try:
+    for ver, m_name in targets_to_try:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{m_name}:generateContent?key={GEMINI_API_KEY}"
+            url = f"https://generativelanguage.googleapis.com/{ver}/models/{m_name}:generateContent?key={GEMINI_API_KEY}"
             payload = {
                 "contents": [
                     {
