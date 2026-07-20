@@ -529,11 +529,17 @@
         let API_BASE = localStorage.getItem('voice_assistant_api_url') || DEFAULT_LOCAL_URL;
 
         function getFetchOptions(customOptions = {}) {
+            const headers = {};
+            if (customOptions.method && customOptions.method !== 'GET') {
+                headers['Content-Type'] = 'application/json';
+            }
+            if (API_BASE.includes('loca.lt')) {
+                headers['bypass-tunnel-reminder'] = 'true';
+            }
             return {
                 ...customOptions,
                 headers: {
-                    'Content-Type': 'application/json',
-                    'bypass-tunnel-reminder': 'true',
+                    ...headers,
                     ...(customOptions.headers || {})
                 }
             };
