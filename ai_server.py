@@ -135,14 +135,14 @@ def process_text_chat():
             print(f"Gemini API Exception: {e}")
             reply_text = "Sorry, I had trouble reaching my AI brain. Please try again."
 
-    # Text-to-Speech (TTS)
+    # Text-to-Speech (TTS) with graceful fallback
+    audio_url = None
     try:
         text_to_speech(reply_text, RESPONSE_AUDIO_PATH)
+        audio_url = request.url_root + "static/response.mp3"
     except Exception as e:
-        print(f"TTS Exception: {e}")
-        return jsonify({"error": "Failed to synthesize speech"}), 500
-
-    audio_url = request.url_root + "static/response.mp3"
+        print(f"TTS Exception (continuing without audio): {e}")
+        audio_url = None
     
     # Save assistant message to history logs
     chat_history.append({
