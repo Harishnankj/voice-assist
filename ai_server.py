@@ -102,6 +102,40 @@ def handle_name_select():
     
     return jsonify({"assistant_name": assistant_name})
 
+def get_working_gemini_models():
+    """Query Google API ListModels to discover exact available model identifiers for this API key"""
+    if not GEMINI_API_KEY:
+        return []
+    
+    discovered = []
+    for ver in ["v1beta", "v1"]:
+        try:
+            res = requests.get(f"https://generativelanguage.googleapis.com/{ver}/models?key={GEMINI_API_KEY}", timeout=5)
+            data = res.json()
+            if "models" in data:
+                for m in data["models"]:
+                    name = m.get("name", "")
+                    methods = m.get("supportedGenerationMethods", [])
+                    if "generateContent" in methods:
+                        clean_name = name.replace("models/", "")
+                        discovered.append((ver, clean_name))
+        except Exception as e:
+            print(f"ListModels error for {ver}: {e}")
+    
+    fallbacks = [
+        ("v1beta", "gemini-1.5-flash-latest"),
+        ("v1beta", "gemini-1.5-flash-001"),
+        ("v1beta", "gemini-1.5-flash"),
+        ("v1", "gemini-1.5-flash"),
+        ("v1beta", "gemini-1.0-pro"),
+        ("v1beta", "gemini-pro")
+    ]
+    for fb in fallbacks:
+        if fb not in discovered:
+            discovered.append(fb)
+            
+    return discovered
+
 @app.route('/chat', methods=['POST'])
 def process_text_chat():
     """Handle text chat submissions from the Web UI dashboard"""
@@ -128,14 +162,8 @@ def process_text_chat():
         reply_text = "Gemini key is missing. Please configure it in your Render settings."
     else:
         try:
-            # Multi-endpoint (v1 & v1beta) fallback cascade
-            targets_to_try = [
-                ("v1beta", "gemini-1.5-flash"),
-                ("v1", "gemini-1.5-flash"),
-                ("v1beta", "gemini-2.0-flash"),
-                ("v1beta", "gemini-1.5-pro"),
-                ("v1", "gemini-1.5-pro")
-            ]
+            # Dynamically discover supported model identifiers for this API key
+            targets_to_try = get_working_gemini_models()
             
             reply_text = None
             last_error_msg = "No response from Gemini API"
@@ -229,16 +257,10 @@ def process_voice():
     # 1. Base64-encode the raw WAV audio
     audio_b64 = base64.b64encode(audio_data).decode('utf-8')
 
-    # 2. Query Gemini API directly with multi-endpoint fallback cascade
+    # 2. Query Gemini API directly with dynamically discovered working models
     user_text = "Voice command received"
     reply_text = None
-    targets_to_try = [
-        ("v1beta", "gemini-1.5-flash"),
-        ("v1", "gemini-1.5-flash"),
-        ("v1beta", "gemini-2.0-flash"),
-        ("v1beta", "gemini-1.5-pro"),
-        ("v1", "gemini-1.5-pro")
-    ]
+    targets_to_try = get_working_gemini_models()
 
     for ver, m_name in targets_to_try:
         try:
