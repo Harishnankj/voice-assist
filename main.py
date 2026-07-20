@@ -252,9 +252,10 @@ def process_voice():
     # 1. Base64-encode the raw WAV audio
     audio_b64 = base64.b64encode(audio_data).decode('utf-8')
 
-    # 2. Query Gemini 1.5 Flash API directly
-    user_text = "Voice command received"
+    # 2. Query Gemini 1.5 Flash API with Call-by-Name Wake Word Filter
+    user_text = None
     reply_text = None
+    name_called = False
 
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
@@ -271,9 +272,11 @@ def process_voice():
                         {
                             "text": (
                                 f"Listen carefully to this audio recording from an ESP32 microphone. "
-                                f"1. Transcribe the exact question or voice command spoken by the user into the 'query' field. "
-                                f"2. Answer their question directly, accurately, and politely as an AI robot assistant named '{assistant_name}' in the 'reply' field (1-2 sentences). "
-                                f"Return your reply ONLY as a valid JSON object containing 'query' and 'reply'. Do not include markdown formatting or extra text."
+                                f"1. Determine if the user spoke or addressed the robot assistant by its call name '{assistant_name}' (or similar phonetics like Jarvis/Jarves). "
+                                f"2. Transcribe the exact speech into the 'query' field. "
+                                f"3. Set 'name_called' to true if the name '{assistant_name}' was called/spoken in the audio, or false if the name was NOT called. "
+                                f"4. If 'name_called' is true, answer their question in 'reply' as a polite assistant named '{assistant_name}' (1-2 sentences). If false, set 'reply' to null. "
+                                f"Return your reply ONLY as a valid JSON object containing 'name_called', 'query', and 'reply'."
                             )
                         }
                     ]
@@ -297,17 +300,22 @@ def process_voice():
             
             # Parse the JSON response from Gemini
             ai_data = json.loads(raw_text)
+            name_called = bool(ai_data.get("name_called", False))
             user_text = ai_data.get("query", "").strip() or "Voice command"
-            reply_text = ai_data.get("reply", "").strip()
+            reply_text = ai_data.get("reply", "").strip() if name_called else None
             
-            print(f"Gemini Transcribed: '{user_text}'")
-            print(f"Gemini Replied: '{reply_text}'")
+            print(f"Gemini Transcribed: '{user_text}' | Name Called ({assistant_name}): {name_called}")
     except Exception as e:
         print(f"Gemini Voice Exception: {e}")
 
-    if not reply_text:
-        user_text = "Voice command received"
-        reply_text = "Hello! I heard your voice command. How can I help you?"
+    # Wake Word Filter Enforcement: If assistant name was NOT called, ignore request completely!
+    if not name_called or not reply_text:
+        print(f"[Wake Word Filter] Assistant name '{assistant_name}' was NOT called in audio. Ignoring request.")
+        esp_state = "idle"
+        return jsonify({
+            "status": "ignored",
+            "reason": f"Assistant name '{assistant_name}' not called in voice command"
+        })
 
     # 3. Save conversation history logs
     chat_history.append({

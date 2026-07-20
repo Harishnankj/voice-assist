@@ -260,58 +260,67 @@ def process_voice():
     for ver, m_name in targets_to_try:
         try:
             url = f"https://generativelanguage.googleapis.com/{ver}/models/{m_name}:generateContent?key={GEMINI_API_KEY}"
-            payload = {
-                "contents": [
-                    {
-                        "parts": [
-                            {
-                                "inlineData": {
-                                    "mimeType": "audio/wav",
-                                    "data": audio_b64
-                                }
-                            },
-                            {
-                                "text": (
-                                    f"Listen carefully to this audio recording from an ESP32 microphone. "
-                                    f"1. Transcribe the exact question or voice command spoken by the user into the 'query' field. "
-                                    f"2. Answer their question directly, accurately, and politely as an AI robot assistant named '{assistant_name}' in the 'reply' field (1-2 sentences). "
-                                    f"Return your reply ONLY as a valid JSON object containing 'query' and 'reply'. Do not include markdown formatting or extra text."
-                                )
-                            }
-                        ]
-                    }
-                ]
-            }
-            
-            response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=20)
-            response_json = response.json()
-            if 'candidates' in response_json and response_json['candidates']:
-                raw_text = response_json['candidates'][0]['content']['parts'][0]['text'].strip()
-                
-                # Clean up any potential markdown backticks returned by Gemini
-                if raw_text.startswith("```json"):
-                    raw_text = raw_text[7:]
-                if raw_text.startswith("```"):
-                    raw_text = raw_text[3:]
-                if raw_text.endswith("```"):
-                    raw_text = raw_text[:-3]
-                raw_text = raw_text.strip()
-                
-                # Parse the JSON response from Gemini
-                ai_data = json.loads(raw_text)
-                user_text = ai_data.get("query", "").strip() or "Voice command"
-                reply_text = ai_data.get("reply", "").strip()
-                
-                print(f"Gemini ({m_name}) Transcribed: '{user_text}'")
-                print(f"Gemini ({m_name}) Replied: '{reply_text}'")
-                break
-        except Exception as e:
-            print(f"Gemini Voice Exception for {m_name}: {e}")
-            continue
+    name_called = False
 
-    if not reply_text:
-        user_text = "Voice command received"
-        reply_text = "Hello! I heard your voice command. How can I help you?"
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "inlineData": {
+                                "mimeType": "audio/wav",
+                                "data": audio_b64
+                            }
+                        },
+                        {
+                            "text": (
+                                f"Listen carefully to this audio recording from an ESP32 microphone. "
+                                f"1. Determine if the user spoke or addressed the robot assistant by its call name '{assistant_name}' (or similar phonetics like Jarvis/Jarves). "
+                                f"2. Transcribe the exact speech into the 'query' field. "
+                                f"3. Set 'name_called' to true if the name '{assistant_name}' was called/spoken in the audio, or false if the name was NOT called. "
+                                f"4. If 'name_called' is true, answer their question in 'reply' as a polite assistant named '{assistant_name}' (1-2 sentences). If false, set 'reply' to null. "
+                                f"Return your reply ONLY as a valid JSON object containing 'name_called', 'query', and 'reply'."
+                            )
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=12)
+        response_json = response.json()
+        if 'candidates' in response_json and response_json['candidates']:
+            raw_text = response_json['candidates'][0]['content']['parts'][0]['text'].strip()
+            
+            # Clean up any potential markdown backticks returned by Gemini
+            if raw_text.startswith("```json"):
+                raw_text = raw_text[7:]
+            if raw_text.startswith("```"):
+                raw_text = raw_text[3:]
+            if raw_text.endswith("```"):
+                raw_text = raw_text[:-3]
+            raw_text = raw_text.strip()
+            
+            # Parse the JSON response from Gemini
+            ai_data = json.loads(raw_text)
+            name_called = bool(ai_data.get("name_called", False))
+            user_text = ai_data.get("query", "").strip() or "Voice command"
+            reply_text = ai_data.get("reply", "").strip() if name_called else None
+            
+            print(f"Gemini Transcribed: '{user_text}' | Name Called ({assistant_name}): {name_called}")
+    except Exception as e:
+        print(f"Gemini Voice Exception: {e}")
+
+    # Wake Word Filter Enforcement: If assistant name was NOT called, ignore request completely!
+    if not name_called or not reply_text:
+        print(f"[Wake Word Filter] Assistant name '{assistant_name}' was NOT called in audio. Ignoring request.")
+        esp_state = "idle"
+        return jsonify({
+            "status": "ignored",
+            "reason": f"Assistant name '{assistant_name}' not called in voice command"
+        })
 
     # 3. Save conversation history logs
     chat_history.append({
