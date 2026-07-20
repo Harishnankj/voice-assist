@@ -75,21 +75,37 @@ def get_history():
 @app.route('/model', methods=['GET', 'POST'])
 def handle_model_select():
     global active_model
+    valid_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
     if request.method == 'POST':
         data = request.get_json() or {}
-        model = data.get("model")
-        if model:
+        model = data.get("model", "").strip()
+        if model in valid_models:
             active_model = model
-            print(f"Server active model updated to: {active_model}")
-            return jsonify({"status": "success", "active_model": active_model})
-        return jsonify({"error": "Invalid model selection"}), 400
+        else:
+            active_model = "gemini-1.5-flash"
+        print(f"Server active model updated to: {active_model}")
+        return jsonify({"status": "success", "active_model": active_model})
     
     return jsonify({"active_model": active_model})
+
+@app.route('/name', methods=['GET', 'POST'])
+def handle_name_select():
+    global assistant_name
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        name = data.get("name", "").strip()
+        if name:
+            assistant_name = name
+            print(f"Server assistant name updated to: {assistant_name}")
+            return jsonify({"status": "success", "assistant_name": assistant_name})
+        return jsonify({"error": "Invalid name selection"}), 400
+    
+    return jsonify({"assistant_name": assistant_name})
 
 @app.route('/chat', methods=['POST'])
 def process_text_chat():
     """Handle text chat submissions from the Web UI dashboard"""
-    global active_model
+    global active_model, assistant_name
     data = request.get_json() or {}
     user_text = data.get("text", "").strip()
     
@@ -112,8 +128,14 @@ def process_text_chat():
         reply_text = "Gemini key is missing. Please configure it in your Render settings."
     else:
         try:
-            # Model retry cascade with exact valid Gemini v1beta model strings
-            models_to_try = [active_model, "gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
+            # Only use verified, active Google Gemini v1beta model identifiers
+            valid_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
+            candidates_list = [active_model, "gemini-1.5-flash", "gemini-1.5-pro"]
+            models_to_try = []
+            for m in candidates_list:
+                if m in valid_models and m not in models_to_try:
+                    models_to_try.append(m)
+            
             reply_text = None
             last_error_msg = "No response from Gemini API"
             

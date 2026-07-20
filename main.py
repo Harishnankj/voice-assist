@@ -60,14 +60,16 @@ def get_history():
 @app.route('/model', methods=['GET', 'POST'])
 def handle_model_select():
     global active_model
+    valid_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
     if request.method == 'POST':
         data = request.get_json() or {}
-        model = data.get("model")
-        if model:
+        model = data.get("model", "").strip()
+        if model in valid_models:
             active_model = model
-            print(f"Server active model updated to: {active_model}")
-            return jsonify({"status": "success", "active_model": active_model})
-        return jsonify({"error": "Invalid model selection"}), 400
+        else:
+            active_model = "gemini-1.5-flash"
+        print(f"Server active model updated to: {active_model}")
+        return jsonify({"status": "success", "active_model": active_model})
     
     return jsonify({"active_model": active_model})
 
@@ -111,8 +113,14 @@ def process_text_chat():
         reply_text = "Gemini key is missing. Please configure it in your Render settings."
     else:
         try:
-            # Model retry cascade with exact valid Gemini v1beta model strings
-            models_to_try = [active_model, "gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
+            # Only use verified, active Google Gemini v1beta model identifiers
+            valid_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
+            candidates_list = [active_model, "gemini-1.5-flash", "gemini-1.5-pro"]
+            models_to_try = []
+            for m in candidates_list:
+                if m in valid_models and m not in models_to_try:
+                    models_to_try.append(m)
+            
             reply_text = None
             last_error_msg = "No response from Gemini API"
             
