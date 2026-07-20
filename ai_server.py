@@ -173,11 +173,13 @@ def get_valid_gemini_models():
             print(f"ListModels error for {ver}: {e}")
 
     defaults = [
-        ("v1beta", "gemini-1.5-flash"),
-        ("v1", "gemini-1.5-flash"),
-        ("v1beta", "gemini-1.5-flash-latest"),
+        ("v1beta", "gemini-2.5-flash"),
         ("v1beta", "gemini-2.0-flash"),
-        ("v1beta", "gemini-1.5-pro")
+        ("v1beta", "gemini-flash-latest"),
+        ("v1beta", "gemini-2.5-pro"),
+        ("v1beta", "gemini-pro-latest"),
+        ("v1", "gemini-2.5-flash"),
+        ("v1beta", "gemini-1.5-flash")
     ]
     for d in defaults:
         if d not in discovered:
