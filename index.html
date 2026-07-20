@@ -119,6 +119,86 @@
             box-shadow: 0 0 10px var(--accent-recording);
         }
 
+        .status-badge.listening {
+            background: rgba(6, 182, 212, 0.18);
+            border-color: rgba(6, 182, 212, 0.5);
+            color: #38bdf8;
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.3);
+        }
+
+        .status-badge.processing {
+            background: rgba(168, 85, 247, 0.18);
+            border-color: rgba(168, 85, 247, 0.5);
+            color: #c084fc;
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.3);
+        }
+
+        .status-badge.speaking {
+            background: rgba(16, 185, 129, 0.18);
+            border-color: rgba(16, 185, 129, 0.5);
+            color: #34d399;
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+        }
+
+        .status-dot.listening {
+            background-color: #06b6d4;
+            box-shadow: 0 0 10px #06b6d4;
+            animation: dotPulse 0.8s infinite alternate;
+        }
+
+        .status-dot.processing {
+            background-color: #a855f7;
+            box-shadow: 0 0 10px #a855f7;
+            animation: dotPulse 0.6s infinite alternate;
+        }
+
+        .status-dot.speaking {
+            background-color: #10b981;
+            box-shadow: 0 0 10px #10b981;
+            animation: dotPulse 0.8s infinite alternate;
+        }
+
+        @keyframes dotPulse {
+            0% { transform: scale(0.8); opacity: 0.6; }
+            100% { transform: scale(1.4); opacity: 1; }
+        }
+
+        /* ESP32 Voice Activation Live Banner */
+        .esp-live-banner {
+            display: none;
+            padding: 10px 18px;
+            margin: 12px 24px 0 24px;
+            border-radius: 14px;
+            font-size: 0.88rem;
+            font-weight: 500;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 5;
+            backdrop-filter: blur(10px);
+        }
+
+        .esp-live-banner.listening {
+            display: flex;
+            background: rgba(6, 182, 212, 0.15);
+            border: 1px solid rgba(6, 182, 212, 0.4);
+            color: #38bdf8;
+        }
+
+        .esp-live-banner.processing {
+            display: flex;
+            background: rgba(168, 85, 247, 0.15);
+            border: 1px solid rgba(168, 85, 247, 0.4);
+            color: #c084fc;
+        }
+
+        .esp-live-banner.speaking {
+            display: flex;
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            color: #34d399;
+        }
+
         header h1 {
             font-size: 1.4rem;
             font-weight: 800;
@@ -467,7 +547,7 @@
 
         <header>
             <div class="header-title-container">
-                <div class="status-badge">
+                <div class="status-badge" id="statusBadge">
                     <div class="status-dot" id="statusDot"></div>
                     <span id="statusText">Connecting...</span>
                 </div>
@@ -490,6 +570,11 @@
                 <button class="icon-btn" onclick="clearHistoryUI()" title="Clear Console Log">🗑️</button>
             </div>
         </header>
+
+        <!-- ESP32 Live Voice Activation State Banner -->
+        <div class="esp-live-banner" id="espLiveBanner">
+            <span id="espBannerText">🎙️ ESP32 Voice Activation Active</span>
+        </div>
 
         <div class="chat-area" id="chatArea">
             <div class="empty-state" id="emptyState">
@@ -671,6 +756,45 @@
             }
         }
 
+        function updateEspStateUI(state) {
+            const badge = document.getElementById('statusBadge');
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            const banner = document.getElementById('espLiveBanner');
+            const bannerText = document.getElementById('espBannerText');
+
+            if (!state || state === 'idle') {
+                if (badge) badge.className = 'status-badge';
+                if (dot) dot.className = 'status-dot online';
+                if (text) text.textContent = '🟢 ESP32 Ready';
+                if (banner) banner.className = 'esp-live-banner';
+                return;
+            }
+
+            if (badge) badge.className = 'status-badge ' + state;
+            if (dot) dot.className = 'status-dot ' + state;
+
+            if (state === 'listening') {
+                if (text) text.innerHTML = '🎙️ ESP32 Listening...';
+                if (banner) {
+                    banner.className = 'esp-live-banner listening';
+                    if (bannerText) bannerText.innerHTML = '🎙️ <b>ESP32 Voice Command Triggered!</b> Recording audio from INMP441 mic...';
+                }
+            } else if (state === 'processing') {
+                if (text) text.innerHTML = '🧠 ESP32 Thinking...';
+                if (banner) {
+                    banner.className = 'esp-live-banner processing';
+                    if (bannerText) bannerText.innerHTML = '🧠 <b>ESP32 Processing Audio...</b> Querying Gemini AI in the Cloud...';
+                }
+            } else if (state === 'speaking') {
+                if (text) text.innerHTML = '🔊 ESP32 Speaking...';
+                if (banner) {
+                    banner.className = 'esp-live-banner speaking';
+                    if (bannerText) bannerText.innerHTML = '🔊 <b>ESP32 Speaker Active!</b> Outputting AI voice reply on MAX98357A hardware speaker...';
+                }
+            }
+        }
+
         // Fetch chat history from backend
         async function fetchHistory() {
             try {
@@ -686,10 +810,15 @@
                     lastMessageCount = data.history.length;
                     scrollToBottom();
                 }
-                const dot = document.getElementById('statusDot');
-                const text = document.getElementById('statusText');
-                dot.className = 'status-dot online';
-                text.textContent = API_BASE.includes('loca.lt') ? 'Local Tunnel Online' : (API_BASE.includes('localhost') ? 'Localhost Online' : 'Render Cloud Online');
+
+                if (data.esp_state) {
+                    updateEspStateUI(data.esp_state);
+                } else {
+                    const dot = document.getElementById('statusDot');
+                    const text = document.getElementById('statusText');
+                    dot.className = 'status-dot online';
+                    text.textContent = 'Render Cloud Online';
+                }
             } catch (error) {
                 checkServerHealth();
             }

@@ -24,6 +24,7 @@ active_model = "gemini-1.5-flash"  # Default active model
 assistant_name = "Jarvis"            # Default assistant call-by-name identity
 pending_esp_audio = None             # Audio URL queued for ESP32 hardware playback
 chat_history = []                  # In-memory chat transcripts logs
+esp_state = "idle"                 # ESP32 hardware state ("idle", "listening", "processing", "speaking")
 
 # Retrieve Gemini API Key from environment
 GEMINI_API_KEY = (os.environ.get("GEMINI_API_KEY") or "").strip()
@@ -55,7 +56,19 @@ def index():
 
 @app.route('/history', methods=['GET'])
 def get_history():
-    return jsonify({"history": chat_history})
+    return jsonify({"history": chat_history, "esp_state": esp_state})
+
+@app.route('/esp_status', methods=['GET', 'POST'])
+def handle_esp_status():
+    global esp_state
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        new_state = data.get("state", "").strip()
+        if new_state in ["idle", "listening", "processing", "speaking"]:
+            esp_state = new_state
+            print(f"ESP32 Hardware Status updated: {esp_state}")
+        return jsonify({"status": "success", "state": esp_state})
+    return jsonify({"state": esp_state})
 
 @app.route('/model', methods=['GET', 'POST'])
 def handle_model_select():
@@ -229,10 +242,11 @@ def process_text_chat():
 @app.route('/pending_audio', methods=['GET'])
 def get_pending_audio():
     """Endpoint polled by ESP32 hardware to fetch and play web dashboard audio replies"""
-    global pending_esp_audio
+    global pending_esp_audio, esp_state
     if pending_esp_audio:
         url = pending_esp_audio
         pending_esp_audio = None  # Reset after sending so it only plays once
+        esp_state = "speaking"
         print(f"Delivering pending audio to ESP32: {url}")
         return jsonify({"pending": True, "audio": url})
     return jsonify({"pending": False, "audio": None})
@@ -240,7 +254,8 @@ def get_pending_audio():
 @app.route('/voice', methods=['POST'])
 def process_voice():
     """Handle audio upload recordings from the ESP32 hardware client"""
-    global active_model
+    global active_model, esp_state
+    esp_state = "processing"
     
     if not request.data:
         return jsonify({"error": "No audio data received"}), 400
