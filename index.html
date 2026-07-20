@@ -955,13 +955,29 @@
             try {
                 const url = getApiUrl('chat');
                 console.log('Sending chat POST to:', url);
-                const response = await fetch(url, getFetchOptions({
-                    method: 'POST',
-                    body: JSON.stringify({ text: text })
-                }));
+                let response = null;
+
+                // Automatic retry loop for Render Cloud container wake-up
+                for (let attempt = 1; attempt <= 3; attempt++) {
+                    try {
+                        const controller = new AbortController();
+                        const timeoutId = setTimeout(() => controller.abort(), 25000);
+                        response = await fetch(url, getFetchOptions({
+                            method: 'POST',
+                            signal: controller.signal,
+                            body: JSON.stringify({ text: text })
+                        }));
+                        clearTimeout(timeoutId);
+                        if (response.ok) break;
+                    } catch (e) {
+                        console.warn(`Chat POST Attempt ${attempt} failed: ${e.message}`);
+                        if (attempt === 3) throw e;
+                        await new Promise(r => setTimeout(r, 1500));
+                    }
+                }
                 
-                if (!response.ok) {
-                    throw new Error('Server returned HTTP ' + response.status);
+                if (!response || !response.ok) {
+                    throw new Error('Server status ' + (response ? response.status : 'timeout'));
                 }
 
                 const data = await response.json();

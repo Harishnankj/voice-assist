@@ -14,6 +14,13 @@ root_dir = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, template_folder=root_dir)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
+
 # Ensure static directory exists to save response speech files
 STATIC_DIR = os.path.join(app.root_path, 'static')
 os.makedirs(STATIC_DIR, exist_ok=True)
@@ -216,9 +223,12 @@ def call_gemini_api(prompt_text, inline_audio_b64=None):
 
     return None, last_err
 
-@app.route('/chat', methods=['POST'])
+@app.route('/chat', methods=['POST', 'OPTIONS'])
 def process_text_chat():
     """Handle text chat submissions from the Web UI dashboard"""
+    if request.method == 'OPTIONS':
+        return jsonify({"status": "ok"}), 200
+
     global assistant_name
     data = request.get_json() or {}
     user_text = data.get("text", "").strip()

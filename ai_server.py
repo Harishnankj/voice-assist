@@ -6,13 +6,21 @@ import asyncio
 import datetime
 import requests
 from flask import Flask, request, jsonify, send_from_directory, render_template
+from flask_cors import CORS
 import edge_tts
 
-# Configure Flask template folder to search in the repository root directory
+# Configure Flask template folder and enable bulletproof CORS
 root_dir = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, template_folder=root_dir)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
-# Enable CORS manually to allow the webpage hosted on GitHub Pages to communicate with Render/Tunnel
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
+
 @app.before_request
 def handle_preflight():
     if request.method == "OPTIONS":
