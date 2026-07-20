@@ -113,13 +113,8 @@ def process_text_chat():
         reply_text = "Gemini key is missing. Please configure it in your Render settings."
     else:
         try:
-            # Only use verified, active Google Gemini v1beta model identifiers
-            valid_models = ["gemini-1.5-flash", "gemini-1.5-pro"]
-            candidates_list = [active_model if active_model in valid_models else "gemini-1.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
-            models_to_try = []
-            for m in candidates_list:
-                if m not in models_to_try:
-                    models_to_try.append(m)
+            # Use verified, active Google Gemini v1beta model identifier: gemini-1.5-flash
+            models_to_try = ["gemini-1.5-flash"]
             
             reply_text = None
             last_error_msg = "No response from Gemini API"
