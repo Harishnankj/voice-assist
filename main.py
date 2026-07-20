@@ -45,10 +45,18 @@ if GEMINI_API_KEY:
 else:
     print("WARNING: GEMINI_API_KEY environment variable is not set.")
 
-async def text_to_speech(text, output_path):
-    """Synthesize high-quality text-to-speech using Microsoft Edge TTS"""
-    communicate = edge_tts.Communicate(text, "en-US-EmmaMultilingualNeural")
-    await communicate.save(output_path)
+def text_to_speech(text, output_path):
+    """Synthesize high-quality text-to-speech using Microsoft Edge TTS in a dedicated loop"""
+    async def _generate():
+        communicate = edge_tts.Communicate(text, "en-US-EmmaMultilingualNeural")
+        await communicate.save(output_path)
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_generate())
+    finally:
+        loop.close()
 
 def get_current_timestamp():
     """Return HH:MM:SS time string"""
@@ -129,7 +137,7 @@ def process_text_chat():
 
     # Text-to-Speech (TTS)
     try:
-        asyncio.run(text_to_speech(reply_text, RESPONSE_AUDIO_PATH))
+        text_to_speech(reply_text, RESPONSE_AUDIO_PATH)
     except Exception as e:
         print(f"TTS Exception: {e}")
         return jsonify({"error": "Failed to synthesize speech"}), 500
@@ -231,7 +239,7 @@ def process_voice():
 
     # 4. Text-to-Speech (TTS)
     try:
-        asyncio.run(text_to_speech(reply_text, RESPONSE_AUDIO_PATH))
+        text_to_speech(reply_text, RESPONSE_AUDIO_PATH)
         print("Speech synthesis completed.")
     except Exception as e:
         print(f"TTS Exception: {e}")
