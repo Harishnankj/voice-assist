@@ -848,10 +848,7 @@
                     timestamp: new Date().toLocaleTimeString()
                 });
 
-                if (data.audio) {
-                    const audio = new Audio(data.audio);
-                    audio.play().catch(e => console.log('Autoplay deferred:', e));
-                }
+                // Audio plays exclusively on ESP32 Hardware Speaker (Laptop playback disabled)
             } catch (error) {
                 console.error("Error sending message:", error);
                 showTyping(false);
