@@ -60,7 +60,7 @@ def get_history():
 @app.route('/model', methods=['GET', 'POST'])
 def handle_model_select():
     global active_model
-    valid_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
+    valid_models = ["gemini-1.5-flash", "gemini-1.5-pro"]
     if request.method == 'POST':
         data = request.get_json() or {}
         model = data.get("model", "").strip()
@@ -114,11 +114,11 @@ def process_text_chat():
     else:
         try:
             # Only use verified, active Google Gemini v1beta model identifiers
-            valid_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
-            candidates_list = [active_model, "gemini-1.5-flash", "gemini-1.5-pro"]
+            valid_models = ["gemini-1.5-flash", "gemini-1.5-pro"]
+            candidates_list = [active_model if active_model in valid_models else "gemini-1.5-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
             models_to_try = []
             for m in candidates_list:
-                if m in valid_models and m not in models_to_try:
+                if m not in models_to_try:
                     models_to_try.append(m)
             
             reply_text = None
