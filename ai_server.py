@@ -194,13 +194,9 @@ def get_valid_gemini_models():
             print(f"ListModels error for {ver}: {e}")
 
     defaults = [
-        ("v1beta", "gemini-2.5-flash"),
-        ("v1beta", "gemini-2.0-flash"),
-        ("v1beta", "gemini-flash-latest"),
-        ("v1beta", "gemini-2.5-pro"),
-        ("v1beta", "gemini-pro-latest"),
-        ("v1", "gemini-2.5-flash"),
-        ("v1beta", "gemini-1.5-flash")
+        ("v1beta", "gemini-1.5-flash"),
+        ("v1beta", "gemini-1.5-pro"),
+        ("v1beta", "gemini-2.0-flash-exp")
     ]
     for d in defaults:
         if d not in discovered:
@@ -232,7 +228,7 @@ def call_gemini_api(prompt_text, inline_audio_b64=None):
             parts.append({"text": prompt_text})
 
             payload = {"contents": [{"parts": parts}]}
-            response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=12)
+            response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=6)
             res_json = response.json()
 
             if 'candidates' in res_json and res_json['candidates']:
