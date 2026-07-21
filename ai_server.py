@@ -45,7 +45,7 @@ RESPONSE_AUDIO_PATH = os.path.join(STATIC_DIR, 'response.mp3')
 
 # Server configurations
 active_model = "gemini-1.5-flash"  # Default active model
-assistant_name = "Jarvis"            # Default assistant call-by-name identity
+assistant_name = "Persona"           # Default assistant call-by-name identity
 pending_esp_audio = None             # Audio URL queued for ESP32 hardware playback
 chat_history = []                  # In-memory chat transcripts logs
 esp_state = "idle"                 # ESP32 hardware state ("idle", "listening", "processing", "speaking")
@@ -360,11 +360,11 @@ def process_voice():
         )
     else:
         prompt = (
-            f"STRICT WAKE WORD FILTER: You are an ESP32 AI assistant named '{assistant_name}'. "
+            f"STRICT WAKE WORD FILTER: You are Persona, a smart Alexa-like ESP32 AI voice assistant. "
             f"Listen carefully to the audio clip. "
-            f"1. Check if the speaker explicitly called or addressed the assistant by name '{assistant_name}' (or phonetic variants 'Jarvis', 'Jarves'). "
+            f"1. Check if the speaker explicitly called or addressed the assistant by name '{assistant_name}' (or phonetic variants 'Persona', 'Jarvis'). "
             f"2. CRITICAL RULE: If the name '{assistant_name}' was NOT explicitly spoken, OR if the audio is ambient room noise, TV, music, or random background chatter without the name '{assistant_name}', you MUST set 'name_called' to false, 'query' to null, and 'reply' to null. DO NOT guess or generate answers to background statements! "
-            f"3. ONLY if '{assistant_name}' was explicitly called: set 'name_called' to true, transcribe the question in 'query', and answer in 'reply' (1-2 sentences max). "
+            f"3. ONLY if '{assistant_name}' was explicitly called: set 'name_called' to true, transcribe the question in 'query', and answer in 'reply' as a smart assistant (1-2 clear, natural sentences max). "
             f"Return your reply ONLY as a valid JSON object containing 'name_called', 'query', and 'reply'."
         )
 
