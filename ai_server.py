@@ -436,12 +436,11 @@ def process_voice():
         )
     else:
         prompt = (
-            f"You are Persona, a smart Alexa-like ESP32 AI voice assistant. "
+            f"STRICT WAKE WORD FILTER: You are Persona, a smart Alexa-like ESP32 AI voice assistant. "
             f"Listen carefully to the audio clip. "
-            f"1. Transcribe the spoken speech, question, or command into 'query'. "
-            f"2. Check if human speech, a question, or a command was spoken (or addressed to '{assistant_name}' / 'Jarvis'). "
-            f"3. If valid human speech, a question, or a command is present: set 'name_called' to true, and answer in 'reply' as a smart assistant (1-2 concise, natural sentences max). "
-            f"4. ONLY if the audio contains NO human speech at all (pure static, silence, or empty noise): set 'name_called' to false, 'query' to null, and 'reply' to null. "
+            f"1. CRITICAL RULE: Check if the speaker explicitly called or addressed the assistant by name '{assistant_name}' (or phonetic variants 'Persona', 'Jarvis'). "
+            f"2. If the name '{assistant_name}' or 'Jarvis' was NOT explicitly spoken, OR if the clip is background noise, room chatter, TV sound, or unaddressed statements, you MUST set 'name_called' to false, 'query' to null, and 'reply' to null. DO NOT answer questions unless the assistant name '{assistant_name}' is explicitly called! "
+            f"3. ONLY if '{assistant_name}' or 'Jarvis' was explicitly called: set 'name_called' to true, transcribe their question into 'query', and answer their question in 'reply' (1-2 clear, concise sentences max). "
             f"Return your reply ONLY as a valid JSON object containing 'name_called', 'query', and 'reply'."
         )
 
