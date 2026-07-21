@@ -119,6 +119,13 @@
             box-shadow: 0 0 10px var(--accent-recording);
         }
 
+        .status-badge.offline {
+            background: rgba(239, 68, 68, 0.18);
+            border-color: rgba(239, 68, 68, 0.5);
+            color: #f87171;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+        }
+
         .status-badge.listening {
             background: rgba(6, 182, 212, 0.18);
             border-color: rgba(6, 182, 212, 0.5);
@@ -763,10 +770,18 @@
             const banner = document.getElementById('espLiveBanner');
             const bannerText = document.getElementById('espBannerText');
 
+            if (state === 'offline') {
+                if (badge) badge.className = 'status-badge offline';
+                if (dot) dot.className = 'status-dot offline';
+                if (text) text.textContent = '🔴 ESP32 Disconnected';
+                if (banner) banner.className = 'esp-live-banner';
+                return;
+            }
+
             if (!state || state === 'idle') {
                 if (badge) badge.className = 'status-badge';
                 if (dot) dot.className = 'status-dot online';
-                if (text) text.textContent = '🟢 ESP32 Ready';
+                if (text) text.textContent = '🟢 ESP32 Connected';
                 if (banner) banner.className = 'esp-live-banner';
                 return;
             }

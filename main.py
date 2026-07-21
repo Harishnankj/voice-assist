@@ -9,6 +9,8 @@ from flask import Flask, request, jsonify, send_from_directory, render_template
 from flask_cors import CORS
 import edge_tts
 
+import time
+
 # Configure Flask template folder and enable bulletproof CORS
 root_dir = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, template_folder=root_dir)
@@ -32,6 +34,14 @@ assistant_name = "Jarvis"            # Default assistant call-by-name identity
 pending_esp_audio = None             # Audio URL queued for ESP32 hardware playback
 chat_history = []                  # In-memory chat transcripts logs
 esp_state = "idle"                 # ESP32 hardware state ("idle", "listening", "processing", "speaking")
+esp_last_ping = 0                  # Unix timestamp of last received ESP32 hardware ping
+
+def get_effective_esp_state():
+    """Return 'offline' if no ping received from ESP32 for over 10 seconds"""
+    global esp_state, esp_last_ping
+    if esp_last_ping == 0 or (time.time() - esp_last_ping > 10):
+        return "offline"
+    return esp_state
 
 # Retrieve Gemini API Key from environment (strip spaces, quotes, newlines)
 GEMINI_API_KEY = (os.environ.get("GEMINI_API_KEY") or "").strip().strip('"').strip("'")
@@ -96,19 +106,20 @@ def index():
 
 @app.route('/history', methods=['GET'])
 def get_history():
-    return jsonify({"history": chat_history, "esp_state": esp_state})
+    return jsonify({"history": chat_history, "esp_state": get_effective_esp_state()})
 
 @app.route('/esp_status', methods=['GET', 'POST'])
 def handle_esp_status():
-    global esp_state
+    global esp_state, esp_last_ping
     if request.method == 'POST':
+        esp_last_ping = time.time()
         data = request.get_json() or {}
         new_state = data.get("state", "").strip()
         if new_state in ["idle", "listening", "processing", "speaking"]:
             esp_state = new_state
             print(f"ESP32 Hardware Status updated: {esp_state}")
-        return jsonify({"status": "success", "state": esp_state})
-    return jsonify({"state": esp_state})
+        return jsonify({"status": "success", "state": get_effective_esp_state()})
+    return jsonify({"state": get_effective_esp_state()})
 
 @app.route('/model', methods=['GET', 'POST'])
 def handle_model_select():
@@ -292,7 +303,8 @@ def process_text_chat():
 @app.route('/pending_audio', methods=['GET'])
 def get_pending_audio():
     """Endpoint polled by ESP32 hardware to fetch and play web dashboard audio replies"""
-    global pending_esp_audio, esp_state
+    global pending_esp_audio, esp_state, esp_last_ping
+    esp_last_ping = time.time()
     if pending_esp_audio:
         url = pending_esp_audio
         pending_esp_audio = None  # Reset after sending so it only plays once
@@ -304,7 +316,8 @@ def get_pending_audio():
 @app.route('/voice', methods=['POST'])
 def process_voice():
     """Handle audio upload recordings from the ESP32 hardware client"""
-    global assistant_name, esp_state
+    global assistant_name, esp_state, esp_last_ping
+    esp_last_ping = time.time()
     esp_state = "processing"
     
     if not request.data:
