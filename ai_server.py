@@ -345,17 +345,30 @@ def process_voice():
     # 1. Base64-encode the raw WAV audio
     audio_b64 = base64.b64encode(audio_data).decode('utf-8')
 
-    # 2. Query Gemini API with Call-by-Name Wake Word Filter & Confidence Evaluation
-    prompt = (
-        f"Listen carefully to this audio recording from an ESP32 microphone. "
-        f"1. Determine if the user spoke or addressed the robot assistant by its call name '{assistant_name}' (or similar phonetics like Jarvis/Jarves). "
-        f"2. Transcribe the exact speech into the 'query' field. "
-        f"3. Set 'name_called' to true if the name '{assistant_name}' was called/spoken in the audio, or false if the name was NOT called. "
-        f"4. If 'name_called' is true, answer their question or command in 'reply' as a polite assistant named '{assistant_name}' (1-2 sentences max). "
-        f"5. If 'name_called' is true but the audio is noisy, garbled, or unclear, set 'reply' to 'I couldn't hear that clearly. Could you please repeat?' instead of guessing. "
-        f"If 'name_called' is false, set 'reply' to null. "
-        f"Return your reply ONLY as a valid JSON object containing 'name_called', 'query', and 'reply'."
-    )
+    # Check if request is direct push-to-talk button or bypasses name requirement
+    is_direct = request.args.get('direct', '0') in ['1', 'true'] or request.args.get('button', '0') in ['1', 'true']
+
+    # 2. Query Gemini API with dynamic Wake Word / Direct Command Filter
+    if is_direct:
+        prompt = (
+            f"Listen carefully to this audio recording from an ESP32 microphone (Push-to-talk direct command). "
+            f"1. Transcribe the exact speech into the 'query' field. "
+            f"2. Set 'name_called' to true. "
+            f"3. Answer their question or command in 'reply' as a polite assistant named '{assistant_name}' (1-2 sentences max). "
+            f"4. If the audio is empty, noisy, or incomprehensible, set 'reply' to 'I couldn't hear that clearly. Could you please repeat?'. "
+            f"Return your reply ONLY as a valid JSON object containing 'name_called', 'query', and 'reply'."
+        )
+    else:
+        prompt = (
+            f"Listen carefully to this audio recording from an ESP32 microphone. "
+            f"1. Determine if the user spoke or addressed the robot assistant by its call name '{assistant_name}' (or similar phonetics like Jarvis/Jarves). "
+            f"2. Transcribe the exact speech into the 'query' field. "
+            f"3. Set 'name_called' to true if the name '{assistant_name}' was called/spoken in the audio, or false if the name was NOT called. "
+            f"4. If 'name_called' is true, answer their question or command in 'reply' as a polite assistant named '{assistant_name}' (1-2 sentences max). "
+            f"5. If 'name_called' is true but the audio is noisy, garbled, or unclear, set 'reply' to 'I couldn't hear that clearly. Could you please repeat?' instead of guessing. "
+            f"If 'name_called' is false, set 'reply' to null. "
+            f"Return your reply ONLY as a valid JSON object containing 'name_called', 'query', and 'reply'."
+        )
 
     raw_text, err = call_gemini_api(prompt, inline_audio_b64=audio_b64)
     name_called = False
@@ -371,16 +384,16 @@ def process_voice():
             clean = clean.strip()
 
             ai_data = json.loads(clean)
-            name_called = bool(ai_data.get("name_called", False))
+            name_called = bool(ai_data.get("name_called", False)) or is_direct
             user_text = ai_data.get("query", "").strip() or "Voice command"
             reply_text = ai_data.get("reply", "").strip() if name_called else None
-            print(f"Gemini Transcribed: '{user_text}' | Name Called ({assistant_name}): {name_called}")
+            print(f"Gemini Transcribed: '{user_text}' | Direct Mode: {is_direct} | Name Called ({assistant_name}): {name_called}")
         except Exception as p_err:
             print(f"JSON Parse Error: {p_err}")
 
-    # Wake Word Filter Enforcement: If assistant name was NOT called, ignore request completely!
+    # Wake Word Filter Enforcement: If assistant name was NOT called and NOT direct mode, ignore request!
     if not name_called or not reply_text:
-        print(f"[Wake Word Filter] Assistant name '{assistant_name}' was NOT called in audio. Ignoring request.")
+        print(f"[Wake Word Filter] Assistant name '{assistant_name}' was NOT called in audio (Direct: {is_direct}). Ignoring request.")
         esp_state = "idle"
         return jsonify({
             "status": "ignored",
