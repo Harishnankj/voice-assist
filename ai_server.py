@@ -345,13 +345,15 @@ def process_voice():
     # 1. Base64-encode the raw WAV audio
     audio_b64 = base64.b64encode(audio_data).decode('utf-8')
 
-    # 2. Query Gemini API with Call-by-Name Wake Word Filter
+    # 2. Query Gemini API with Call-by-Name Wake Word Filter & Confidence Evaluation
     prompt = (
         f"Listen carefully to this audio recording from an ESP32 microphone. "
         f"1. Determine if the user spoke or addressed the robot assistant by its call name '{assistant_name}' (or similar phonetics like Jarvis/Jarves). "
         f"2. Transcribe the exact speech into the 'query' field. "
         f"3. Set 'name_called' to true if the name '{assistant_name}' was called/spoken in the audio, or false if the name was NOT called. "
-        f"4. If 'name_called' is true, answer their question in 'reply' as a polite assistant named '{assistant_name}' (1-2 sentences). If false, set 'reply' to null. "
+        f"4. If 'name_called' is true, answer their question or command in 'reply' as a polite assistant named '{assistant_name}' (1-2 sentences max). "
+        f"5. If 'name_called' is true but the audio is noisy, garbled, or unclear, set 'reply' to 'I couldn't hear that clearly. Could you please repeat?' instead of guessing. "
+        f"If 'name_called' is false, set 'reply' to null. "
         f"Return your reply ONLY as a valid JSON object containing 'name_called', 'query', and 'reply'."
     )
 
