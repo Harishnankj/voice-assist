@@ -563,16 +563,23 @@
             
             <div class="header-controls">
                 <div class="model-selector-container">
-                    <label for="modelSelect">Gemini Model:</label>
+                    <label for="providerSelect">AI Engine:</label>
+                    <select id="providerSelect" onchange="changeProvider()">
+                        <option value="gemini">Google Gemini</option>
+                        <option value="openai">OpenAI ChatGPT</option>
+                    </select>
+                </div>
+                <div class="model-selector-container">
+                    <label for="modelSelect">Model:</label>
                     <select id="modelSelect" onchange="changeModel()">
                         <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast)</option>
                         <option value="gemini-1.5-pro">Gemini 1.5 Pro (Smart)</option>
-                        <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                        <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
                     </select>
                 </div>
                 <div class="model-selector-container">
                     <label for="nameInput">Robot Name:</label>
-                    <input type="text" id="nameInput" value="Jarvis" onchange="changeAssistantName()" style="background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: #fff; border-radius: 6px; padding: 4px 8px; width: 90px; font-size: 0.85rem;" />
+                    <input type="text" id="nameInput" value="Persona" onchange="changeAssistantName()" style="background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: #fff; border-radius: 6px; padding: 4px 8px; width: 90px; font-size: 0.85rem;" />
                 </div>
                 <button class="icon-btn" onclick="clearHistoryUI()" title="Clear Console Log">🗑️</button>
             </div>
@@ -1031,6 +1038,44 @@
             const indicator = document.getElementById('typingIndicator');
             indicator.style.display = show ? 'flex' : 'none';
             if (show) scrollToBottom();
+        }
+
+        function updateModelOptions(provider) {
+            const select = document.getElementById('modelSelect');
+            if (!select) return;
+            select.innerHTML = '';
+            
+            if (provider === 'openai') {
+                select.innerHTML = `
+                    <option value="gpt-4o-mini">GPT-4o Mini (Fast & Smart)</option>
+                    <option value="gpt-4o">GPT-4o (Most Intelligent)</option>
+                    <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                `;
+            } else {
+                select.innerHTML = `
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash (Fast)</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro (Smart)</option>
+                    <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
+                `;
+            }
+        }
+
+        async function changeProvider() {
+            const providerSelect = document.getElementById('providerSelect');
+            const provider = providerSelect.value;
+            updateModelOptions(provider);
+            try {
+                const response = await fetch(getApiUrl('provider'), getFetchOptions({
+                    method: 'POST',
+                    body: JSON.stringify({ provider: provider })
+                }));
+                const data = await response.json();
+                if (data.active_model && document.getElementById('modelSelect')) {
+                    document.getElementById('modelSelect').value = data.active_model;
+                }
+            } catch (error) {
+                console.error("Error setting AI provider:", error);
+            }
         }
 
         // Model selector change

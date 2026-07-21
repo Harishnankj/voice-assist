@@ -44,6 +44,7 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 RESPONSE_AUDIO_PATH = os.path.join(STATIC_DIR, 'response.mp3')
 
 # Server configurations
+active_provider = "gemini"          # Default AI Provider ("gemini" or "openai")
 active_model = "gemini-1.5-flash"  # Default active model
 assistant_name = "Persona"           # Default assistant call-by-name identity
 pending_esp_audio = None             # Audio URL queued for ESP32 hardware playback
@@ -58,11 +59,39 @@ def get_effective_esp_state():
         return "offline"
     return esp_state
 
-# Retrieve Gemini API Key from environment (strip spaces, quotes, newlines)
+# Retrieve Gemini & OpenAI API Keys from environment (strip spaces, quotes, newlines)
 GEMINI_API_KEY = (os.environ.get("GEMINI_API_KEY") or "").strip().strip('"').strip("'")
+OPENAI_API_KEY = (os.environ.get("OPENAI_API_KEY") or "").strip().strip('"').strip("'")
+
 if GEMINI_API_KEY:
-    masked = GEMINI_API_KEY[:4] + "..." + GEMINI_API_KEY[-4:] if len(GEMINI_API_KEY) > 8 else "too_short"
+    masked = GEMINI_API_KEY[:4] + "..." + GEMINI_API_KEY[-4:] if len(GEMINI_API_KEY) > 8 else "configured"
     print(f"Gemini API configured (Key: {masked}).")
+else:
+    print("WARNING: GEMINI_API_KEY environment variable is not set.")
+
+if OPENAI_API_KEY:
+    masked_oai = OPENAI_API_KEY[:4] + "..." + OPENAI_API_KEY[-4:] if len(OPENAI_API_KEY) > 8 else "configured"
+    print(f"OpenAI API configured (Key: {masked_oai}).")
+else:
+    print("INFO: OPENAI_API_KEY is not set. OpenAI provider will fall back to Gemini.")
+
+@app.route('/provider', methods=['GET', 'POST'])
+def handle_provider_select():
+    global active_provider, active_model
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        provider = data.get("provider", "").strip().lower()
+        if provider in ["gemini", "openai"]:
+            active_provider = provider
+            if active_provider == "openai":
+                active_model = "gpt-4o-mini"
+            else:
+                active_model = "gemini-1.5-flash"
+            print(f"Server active AI provider updated to: {active_provider} (Model: {active_model})")
+            return jsonify({"status": "success", "active_provider": active_provider, "active_model": active_model})
+        return jsonify({"error": "Invalid provider"}), 400
+    
+    return jsonify({"active_provider": active_provider, "active_model": active_model})
 else:
     print("WARNING: GEMINI_API_KEY environment variable is not set.")
 
@@ -138,19 +167,63 @@ def handle_esp_status():
 
 @app.route('/model', methods=['GET', 'POST'])
 def handle_model_select():
-    global active_model
-    valid_models = ["gemini-1.5-flash", "gemini-1.5-pro"]
+    global active_model, active_provider
+    valid_gemini = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp"]
+    valid_openai = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
+    
     if request.method == 'POST':
         data = request.get_json() or {}
         model = data.get("model", "").strip()
-        if model in valid_models:
+        if model in valid_openai:
+            active_provider = "openai"
             active_model = model
-        else:
-            active_model = "gemini-1.5-flash"
-        print(f"Server active model updated to: {active_model}")
-        return jsonify({"status": "success", "active_model": active_model})
+        elif model in valid_gemini:
+            active_provider = "gemini"
+            active_model = model
+        print(f"Server active model updated to: {active_model} (Provider: {active_provider})")
+        return jsonify({"status": "success", "active_model": active_model, "active_provider": active_provider})
     
-    return jsonify({"active_model": active_model})
+    return jsonify({"active_model": active_model, "active_provider": active_provider})
+
+def call_openai_chat_api(prompt_text, system_prompt=None):
+    """Call OpenAI Chat Completions API (gpt-4o-mini / gpt-4o)"""
+    if not OPENAI_API_KEY:
+        return None, "OPENAI_API_KEY is not set in environment"
+
+    if not system_prompt:
+        system_prompt = f"You are {assistant_name}, a friendly Alexa-like ESP32 AI voice assistant. Keep your response concise, conversational, and limited to 1 or 2 sentences."
+
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENAI_API_KEY}"
+    }
+    target_model = active_model if "gpt" in active_model else "gpt-4o-mini"
+    
+    payload = {
+        "model": target_model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt_text}
+        ],
+        "max_tokens": 150,
+        "temperature": 0.7
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=8)
+        res_json = response.json()
+        if response.status_code == 200 and 'choices' in res_json and res_json['choices']:
+            reply = res_json['choices'][0]['message']['content'].strip()
+            print(f"OpenAI API Success ({target_model}): '{reply[:50]}...'")
+            return reply, None
+        else:
+            err_msg = res_json.get('error', {}).get('message', 'OpenAI API Error')
+            print(f"OpenAI API Error: {err_msg}")
+            return None, err_msg
+    except Exception as e:
+        print(f"OpenAI API Exception: {e}")
+        return None, str(e)
 
 @app.route('/name', methods=['GET', 'POST'])
 def handle_name_select():
@@ -248,14 +321,14 @@ def call_gemini_api(prompt_text, inline_audio_b64=None):
 @app.route('/chat', methods=['POST'])
 def process_text_chat():
     """Handle text chat submissions from the Web UI dashboard"""
-    global assistant_name
+    global assistant_name, active_provider
     data = request.get_json() or {}
     user_text = data.get("text", "").strip()
     
     if not user_text:
         return jsonify({"error": "Message is empty"}), 400
         
-    print(f"Received text message from Web: '{user_text}'")
+    print(f"Received text message from Web: '{user_text}' (Provider: {active_provider})")
     timestamp = get_current_timestamp()
     
     # Save user message to history logs
@@ -274,7 +347,14 @@ def process_text_chat():
         f"User asked: {user_text}"
     )
 
-    raw_text, err = call_gemini_api(prompt)
+    if active_provider == "openai" and OPENAI_API_KEY:
+        raw_text, err = call_openai_chat_api(user_text, system_prompt=f"You are {assistant_name}, a friendly Alexa-like ESP32 AI voice assistant. Keep your response short and limited to 1-2 sentences.")
+    else:
+        raw_text, err = call_gemini_api(prompt)
+
+    if not raw_text and active_provider == "openai":
+        print(f"OpenAI failed ({err}). Falling back to Gemini...")
+        raw_text, err = call_gemini_api(prompt)
     if raw_text:
         reply_text = raw_text
     else:
