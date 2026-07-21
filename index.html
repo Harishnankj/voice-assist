@@ -609,7 +609,7 @@
 
         <div class="input-container">
             <div class="input-wrapper">
-                <input type="text" id="textInput" placeholder="Ask XiaoZhi voice assistant..." onkeypress="handleKeyPress(event)">
+                <input type="text" id="textInput" placeholder="Ask Persona AI voice assistant..." onkeypress="handleKeyPress(event)">
                 <button class="mic-btn" id="micBtn" onclick="toggleVoiceRecording()" title="Speak to assistant">🎙️</button>
             </div>
             <button class="send-btn" onclick="sendTextMessage()">Send</button>
@@ -1094,7 +1094,10 @@
 
         async function changeAssistantName() {
             const input = document.getElementById('nameInput');
-            const name = input ? input.value.trim() : 'Jarvis';
+            const name = input ? input.value.trim() : 'Persona';
+            if (document.getElementById('textInput')) {
+                document.getElementById('textInput').placeholder = `Ask ${name} AI voice assistant...`;
+            }
             try {
                 await fetch(getApiUrl('name'), getFetchOptions({
                     method: 'POST',
@@ -1109,8 +1112,13 @@
             try {
                 const response = await fetch(getApiUrl('name'), getFetchOptions());
                 const data = await response.json();
-                if (data.assistant_name && document.getElementById('nameInput')) {
-                    document.getElementById('nameInput').value = data.assistant_name;
+                if (data.assistant_name) {
+                    if (document.getElementById('nameInput')) {
+                        document.getElementById('nameInput').value = data.assistant_name;
+                    }
+                    if (document.getElementById('textInput')) {
+                        document.getElementById('textInput').placeholder = `Ask ${data.assistant_name} AI voice assistant...`;
+                    }
                 }
             } catch (error) {
                 console.error("Error loading assistant name:", error);
