@@ -351,20 +351,21 @@ def process_voice():
     # 2. Query Gemini API with dynamic Wake Word / Direct Command Filter
     if is_direct:
         prompt = (
-            f"Listen carefully to this audio recording from an ESP32 microphone (Push-to-talk direct command). "
+            f"Listen carefully to this audio recording from an ESP32 microphone (Direct command). "
             f"1. Transcribe the exact speech into the 'query' field. "
             f"2. Set 'name_called' to true. "
-            f"3. Answer their question or command in 'reply' as a polite assistant named '{assistant_name}' (1-2 sentences max). "
-            f"4. If the audio is empty, noisy, or incomprehensible, set 'reply' to 'I couldn't hear that clearly. Could you please repeat?'. "
+            f"3. Answer their question or command in 'reply' as a smart Alexa-like voice assistant named '{assistant_name}' (1-2 clear, natural sentences max). "
+            f"4. If the audio is empty or pure static/noise, set 'reply' to 'I couldn't hear that clearly. Could you please repeat?'. "
             f"Return your reply ONLY as a valid JSON object containing 'name_called', 'query', and 'reply'."
         )
     else:
         prompt = (
-            f"STRICT WAKE WORD FILTER: You are Persona, a smart Alexa-like ESP32 AI voice assistant. "
+            f"You are Persona, a smart Alexa-like ESP32 AI voice assistant. "
             f"Listen carefully to the audio clip. "
-            f"1. Check if the speaker explicitly called or addressed the assistant by name '{assistant_name}' (or phonetic variants 'Persona', 'Jarvis'). "
-            f"2. CRITICAL RULE: If the name '{assistant_name}' was NOT explicitly spoken, OR if the audio is ambient room noise, TV, music, or random background chatter without the name '{assistant_name}', you MUST set 'name_called' to false, 'query' to null, and 'reply' to null. DO NOT guess or generate answers to background statements! "
-            f"3. ONLY if '{assistant_name}' was explicitly called: set 'name_called' to true, transcribe the question in 'query', and answer in 'reply' as a smart assistant (1-2 clear, natural sentences max). "
+            f"1. Transcribe the spoken speech, question, or command into 'query'. "
+            f"2. Check if human speech, a question, or a command was spoken (or addressed to '{assistant_name}' / 'Jarvis'). "
+            f"3. If valid human speech, a question, or a command is present: set 'name_called' to true, and answer in 'reply' as a smart assistant (1-2 concise, natural sentences max). "
+            f"4. ONLY if the audio contains NO human speech at all (pure static, silence, or empty noise): set 'name_called' to false, 'query' to null, and 'reply' to null. "
             f"Return your reply ONLY as a valid JSON object containing 'name_called', 'query', and 'reply'."
         )
 
