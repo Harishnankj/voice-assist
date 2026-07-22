@@ -284,12 +284,12 @@ def call_gemini_api(prompt_text, inline_audio_b64=None):
             parts.append({"text": prompt_text})
 
             payload = {"contents": [{"parts": parts}]}
-            response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=6)
+            response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=25)
             res_json = response.json()
 
             if 'candidates' in res_json and res_json['candidates']:
                 raw_text = res_json['candidates'][0]['content']['parts'][0]['text'].strip()
-                print(f"Gemini API Success ({ver}/{m_name}): '{raw_text[:50]}...'")
+                print(f"Gemini API Success ({ver}/{m_name}): '{raw_text[:80]}...'")
                 return raw_text, None
 
             if 'error' in res_json:
@@ -413,21 +413,22 @@ def process_voice():
     # 2. Query Gemini API with dynamic Wake Word / Direct Command Filter
     if is_direct:
         prompt = (
-            f"Listen carefully to this audio recording from an ESP32 microphone (Direct command). "
-            f"1. Transcribe the exact speech into the 'query' field. "
-            f"2. Set 'name_called' to true. "
-            f"3. Answer their question or command in 'reply' as a smart Alexa-like voice assistant named '{assistant_name}' (1-2 clear, natural sentences max). "
-            f"4. If the audio is empty or pure static/noise, set 'reply' to 'I couldn't hear that clearly. Could you please repeat?'. "
-            f"Return your reply ONLY as a valid JSON object containing 'name_called', 'query', and 'reply'."
+            f"This is an audio recording from an ESP32 microphone. The user pressed a button to speak directly."
+            f" IMPORTANT: Even if the audio quality is low (8kHz, noisy), do your BEST to transcribe what was said."
+            f" 1. Transcribe the spoken words into the 'query' field. If you can't hear anything, write 'inaudible'."
+            f" 2. Set 'name_called' to true (always, since this is a direct push-to-talk command)."
+            f" 3. Answer the question or command in 'reply' as '{assistant_name}', a friendly voice assistant (1-2 short sentences)."
+            f" 4. If audio is complete silence/noise, set reply to: 'I could not hear you clearly, please try again.'"
+            f" Return ONLY a valid JSON object: {{\"name_called\": true, \"query\": \"...\", \"reply\": \"...\"}}"
         )
     else:
         prompt = (
-            f"STRICT WAKE WORD FILTER: You are Persona, a smart Alexa-like ESP32 AI voice assistant. "
-            f"Listen carefully to the audio clip. "
-            f"1. CRITICAL RULE: Check if the speaker explicitly called or addressed the assistant by name '{assistant_name}' (or phonetic variants 'Persona', 'Jarvis'). "
-            f"2. If the name '{assistant_name}' or 'Jarvis' was NOT explicitly spoken, OR if the clip is background noise, room chatter, TV sound, or unaddressed statements, you MUST set 'name_called' to false, 'query' to null, and 'reply' to null. DO NOT answer questions unless the assistant name '{assistant_name}' is explicitly called! "
-            f"3. ONLY if '{assistant_name}' or 'Jarvis' was explicitly called: set 'name_called' to true, transcribe their question into 'query', and answer their question in 'reply' (1-2 clear, concise sentences max). "
-            f"Return your reply ONLY as a valid JSON object containing 'name_called', 'query', and 'reply'."
+            f"This is audio from an ESP32 microphone (8kHz quality, may be noisy)."
+            f" Your name is '{assistant_name}'. Listen for your name being called."
+            f" Accepted wake words: '{assistant_name}', 'persona', 'purse-ona', 'person a', or any close phonetic variant."
+            f" 1. If your name was called (or any phonetic variant), set 'name_called' to true, transcribe the full command into 'query', and answer in 'reply' (1-2 short sentences)."
+            f" 2. If your name was NOT called, or audio is background noise/silence, set name_called=false, query=null, reply=null."
+            f" Return ONLY a valid JSON object: {{\"name_called\": true/false, \"query\": \"...\", \"reply\": \"...\"}}"
         )
 
     raw_text, err = call_gemini_api(prompt, inline_audio_b64=audio_b64)
@@ -437,11 +438,18 @@ def process_voice():
 
     if raw_text:
         try:
+            # Strip markdown code fences if Gemini wraps JSON in them
             clean = raw_text.strip()
             if clean.startswith("```json"): clean = clean[7:]
-            if clean.startswith("```"): clean = clean[3:]
+            elif clean.startswith("```"): clean = clean[3:]
             if clean.endswith("```"): clean = clean[:-3]
             clean = clean.strip()
+
+            # Try to extract JSON object even if surrounded by extra text
+            brace_start = clean.find('{')
+            brace_end = clean.rfind('}')
+            if brace_start != -1 and brace_end != -1:
+                clean = clean[brace_start:brace_end+1]
 
             ai_data = json.loads(clean)
             if is_direct:
@@ -449,19 +457,30 @@ def process_voice():
             else:
                 name_called = bool(ai_data.get("name_called", False))
 
-            user_text = ai_data.get("query", "").strip() if name_called else "Ignored background noise"
-            reply_text = ai_data.get("reply", "").strip() if (name_called and ai_data.get("reply")) else None
-            print(f"Gemini Transcribed: '{user_text}' | Direct Mode: {is_direct} | Name Called ({assistant_name}): {name_called}")
+            q = ai_data.get("query") or ""
+            r = ai_data.get("reply") or ""
+            user_text  = q.strip() if name_called else "Ignored background noise"
+            reply_text = r.strip() if (name_called and r.strip()) else None
+            print(f"Transcribed: '{user_text}' | Direct={is_direct} | NameCalled={name_called} | Reply='{reply_text}'")
         except Exception as p_err:
-            print(f"JSON Parse Error: {p_err}")
+            print(f"JSON Parse Error: {p_err} | Raw Gemini output: {raw_text[:200]}")
+            # Fallback: if direct mode and Gemini returned plain text (not JSON), use it directly
+            if is_direct and raw_text and len(raw_text) > 5:
+                name_called = True
+                user_text = "Voice command (raw)"
+                reply_text = raw_text.strip()[:300]  # use raw Gemini text as reply
+                print(f"Using raw Gemini text as fallback reply: '{reply_text[:80]}'")
+    else:
+        print(f"Gemini API returned no text. Error: {err}")
 
-    # Wake Word Filter Enforcement: If assistant name was NOT called and NOT direct mode, ignore request!
+    # Wake Word Filter: reject if name not called (for hands-free) or no reply generated
     if not name_called or not reply_text:
-        print(f"[Wake Word REJECTED] Assistant name '{assistant_name}' was NOT called in audio (Direct: {is_direct}). Ignoring request.")
+        reason = "wake word not detected" if not name_called else "empty reply from AI"
+        print(f"[REJECTED] {reason} | Direct={is_direct} | raw_text={bool(raw_text)}")
         esp_state = "idle"
         return jsonify({
             "status": "ignored",
-            "reason": f"Assistant name '{assistant_name}' not called in voice command"
+            "reason": reason
         })
 
     # Save conversation history logs
