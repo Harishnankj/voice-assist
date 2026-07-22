@@ -501,8 +501,12 @@ def process_voice():
         return jsonify({"error": "Failed to synthesize speech"}), 500
 
     audio_url = request.url_root + "static/response.mp3"
-    global pending_esp_audio
-    pending_esp_audio = audio_url
+    # NOTE: Do NOT set pending_esp_audio here.
+    # The voice endpoint returns the audio URL directly in the HTTP response body,
+    # so the ESP32 plays it immediately from processVoiceCommand().
+    # Setting pending_esp_audio here would cause the ESP32 to play the audio
+    # a second time when it polls /pending_audio. (Double playback bug.)
+    # pending_esp_audio is only for web dashboard typed-chat replies.
 
     # Save assistant message to history logs
     chat_history.append({
