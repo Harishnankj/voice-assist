@@ -301,7 +301,7 @@ def call_gemini_api(prompt_text, inline_audio_b64=None):
             parts.append({"text": prompt_text})
 
             payload = {"contents": [{"parts": parts}]}
-            response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=6)
+            response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=15)  # 15s: handles Gemini variable response times
             res_json = response.json()
 
             if 'candidates' in res_json and res_json['candidates']:

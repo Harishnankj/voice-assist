@@ -1,6 +1,9 @@
 import os
 import io
+import re
 import json
+import uuid
+import glob
 import base64
 import asyncio
 import datetime
@@ -301,6 +304,84 @@ def call_gemini_api(prompt_text, inline_audio_b64=None):
 
     return None, last_err
 
+
+def call_gemini_stt(audio_b64):
+    """Pass 1 — Speech-to-Text only.
+    Ask Gemini to transcribe the audio and return ONLY the spoken words.
+    Returns (transcript_str, error_str).  transcript_str is '' when inaudible.
+    """
+    if not GEMINI_API_KEY:
+        return "", "GEMINI_API_KEY not set"
+
+    stt_prompt = (
+        "Transcribe this audio recording exactly as spoken. "
+        "Output ONLY the transcribed words — no punctuation explanations, no commentary, no JSON. "
+        "If the audio is silent, pure noise, or completely inaudible, output exactly the single word: INAUDIBLE"
+    )
+
+    models_to_try = get_valid_gemini_models()
+    last_err = "No STT response"
+
+    for ver, m_name in models_to_try:
+        try:
+            url = f"https://generativelanguage.googleapis.com/{ver}/models/{m_name}:generateContent?key={GEMINI_API_KEY}"
+            payload = {
+                "contents": [{
+                    "parts": [
+                        {"inlineData": {"mimeType": "audio/wav", "data": audio_b64}},
+                        {"text": stt_prompt}
+                    ]
+                }]
+            }
+            r = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=25)
+            res = r.json()
+            if 'candidates' in res and res['candidates']:
+                transcript = res['candidates'][0]['content']['parts'][0]['text'].strip()
+                print(f"[STT] Raw transcript ({ver}/{m_name}): '{transcript}'")
+                # Treat INAUDIBLE sentinel or very short noise as empty
+                if transcript.upper() == "INAUDIBLE" or len(transcript) < 3:
+                    return "", None
+                return transcript, None
+            if 'error' in res:
+                last_err = res['error'].get('message', str(res['error']))
+                print(f"[STT] Gemini error ({ver}/{m_name}): {last_err}")
+        except Exception as e:
+            last_err = str(e)
+            print(f"[STT] Exception ({ver}/{m_name}): {e}")
+
+    return "", last_err
+
+
+def call_gemini_answer(transcript, assistant_nm):
+    """Pass 2 — LLM text answer.
+    Given the transcribed text, ask Gemini for a short conversational reply.
+    Returns (reply_str, error_str).
+    """
+    prompt = (
+        f"You are '{assistant_nm}', a friendly ESP32 AI voice assistant like Alexa. "
+        f"Answer the following question or command accurately, helpfully, and concisely in 1-2 short sentences. "
+        f"Do NOT repeat the question. Do NOT add filler phrases like 'Sure!' or 'Of course!'. "
+        f"Just give the direct, helpful answer. "
+        f"Question: {transcript}"
+    )
+    reply, err = call_gemini_api(prompt)
+    return reply, err
+
+
+def make_unique_audio_path():
+    """Generate a unique response audio file path and clean up old ones (keep last 5)."""
+    uid = uuid.uuid4().hex[:12]
+    path = os.path.join(STATIC_DIR, f"response_{uid}.mp3")
+    # Clean up old response_*.mp3 files — keep the 5 most recent
+    existing = sorted(glob.glob(os.path.join(STATIC_DIR, "response_*.mp3")), key=os.path.getmtime)
+    for old_file in existing[:-4]:  # remove all but 4 most recent (new one not created yet)
+        try:
+            os.remove(old_file)
+            print(f"[Cleanup] Removed old audio file: {os.path.basename(old_file)}")
+        except Exception:
+            pass
+    return path
+
 @app.route('/chat', methods=['POST', 'OPTIONS'])
 def process_text_chat():
     """Handle text chat submissions from the Web UI dashboard"""
@@ -389,126 +470,88 @@ def get_pending_audio():
 
 @app.route('/voice', methods=['POST'])
 def process_voice():
-    """Handle audio upload recordings from the ESP32 hardware client"""
+    """Handle audio upload recordings from the ESP32 hardware client.
+    Uses a two-pass pipeline:
+      Pass 1 — STT: Gemini transcribes audio to text only.
+      Pass 2 — LLM: Gemini answers the transcribed text (no audio involved).
+    This prevents hallucinated replies when audio quality is low.
+    """
     global assistant_name, esp_state, esp_last_ping
     esp_last_ping = time.time()
     esp_state = "processing"
-    
+
     if not request.data:
         return jsonify({"error": "No audio data received"}), 400
 
-    print("Received audio upload from ESP32...")
+    print(f"Received audio upload from ESP32 ({len(request.data)} bytes)...")
     audio_data = request.data
     timestamp = get_current_timestamp()
-    
+
     if not GEMINI_API_KEY:
         return jsonify({"error": "Gemini API key is not configured"}), 500
 
-    # 1. Base64-encode the raw WAV audio
+    # --- Pass 1: Speech-to-Text ---
     audio_b64 = base64.b64encode(audio_data).decode('utf-8')
+    transcript, stt_err = call_gemini_stt(audio_b64)
 
-    # Check if request is direct push-to-talk button or bypasses name requirement
-    is_direct = request.args.get('direct', '0') in ['1', 'true'] or request.args.get('button', '0') in ['1', 'true']
-
-    # 2. Query Gemini API with dynamic Wake Word / Direct Command Filter
-    if is_direct:
-        prompt = (
-            f"This is an audio recording from an ESP32 microphone. The user pressed a button to speak directly."
-            f" IMPORTANT: Even if the audio quality is low (8kHz, noisy), do your BEST to transcribe what was said."
-            f" 1. Transcribe the spoken words into the 'query' field. If you can't hear anything, write 'inaudible'."
-            f" 2. Set 'name_called' to true (always, since this is a direct push-to-talk command)."
-            f" 3. Answer the question or command in 'reply' as '{assistant_name}', a friendly voice assistant (1-2 short sentences)."
-            f" 4. If audio is complete silence/noise, set reply to: 'I could not hear you clearly, please try again.'"
-            f" Return ONLY a valid JSON object: {{\"name_called\": true, \"query\": \"...\", \"reply\": \"...\"}}"
-        )
-    else:
-        prompt = (
-            f"This is audio from an ESP32 microphone (8kHz quality, may be noisy)."
-            f" Your name is '{assistant_name}'. Listen for your name being called."
-            f" Accepted wake words: '{assistant_name}', 'persona', 'purse-ona', 'person a', or any close phonetic variant."
-            f" 1. If your name was called (or any phonetic variant), set 'name_called' to true, transcribe the full command into 'query', and answer in 'reply' (1-2 short sentences)."
-            f" 2. If your name was NOT called, or audio is background noise/silence, set name_called=false, query=null, reply=null."
-            f" Return ONLY a valid JSON object: {{\"name_called\": true/false, \"query\": \"...\", \"reply\": \"...\"}}"
-        )
-
-    raw_text, err = call_gemini_api(prompt, inline_audio_b64=audio_b64)
-    name_called = False
-    user_text = "Voice command"
-    reply_text = None
-
-    if raw_text:
-        try:
-            # Strip markdown code fences if Gemini wraps JSON in them
-            clean = raw_text.strip()
-            if clean.startswith("```json"): clean = clean[7:]
-            elif clean.startswith("```"): clean = clean[3:]
-            if clean.endswith("```"): clean = clean[:-3]
-            clean = clean.strip()
-
-            # Try to extract JSON object even if surrounded by extra text
-            brace_start = clean.find('{')
-            brace_end = clean.rfind('}')
-            if brace_start != -1 and brace_end != -1:
-                clean = clean[brace_start:brace_end+1]
-
-            ai_data = json.loads(clean)
-            if is_direct:
-                name_called = True
-            else:
-                name_called = bool(ai_data.get("name_called", False))
-
-            q = ai_data.get("query") or ""
-            r = ai_data.get("reply") or ""
-            user_text  = q.strip() if name_called else "Ignored background noise"
-            reply_text = r.strip() if (name_called and r.strip()) else None
-            print(f"Transcribed: '{user_text}' | Direct={is_direct} | NameCalled={name_called} | Reply='{reply_text}'")
-        except Exception as p_err:
-            print(f"JSON Parse Error: {p_err} | Raw Gemini output: {raw_text[:200]}")
-            # Fallback: if direct mode and Gemini returned plain text (not JSON), use it directly
-            if is_direct and raw_text and len(raw_text) > 5:
-                name_called = True
-                user_text = "Voice command (raw)"
-                reply_text = raw_text.strip()[:300]  # use raw Gemini text as reply
-                print(f"Using raw Gemini text as fallback reply: '{reply_text[:80]}'")
-    else:
-        print(f"Gemini API returned no text. Error: {err}")
-
-    # Wake Word Filter: reject if name not called (for hands-free) or no reply generated
-    if not name_called or not reply_text:
-        reason = "wake word not detected" if not name_called else "empty reply from AI"
-        print(f"[REJECTED] {reason} | Direct={is_direct} | raw_text={bool(raw_text)}")
+    if not transcript:
+        reason = f"inaudible audio (STT returned empty): {stt_err or 'no transcript'}" 
+        print(f"[REJECTED] {reason}")
         esp_state = "idle"
-        return jsonify({
-            "status": "ignored",
-            "reason": reason
-        })
+        return jsonify({"status": "ignored", "reason": reason})
 
-    # Save conversation history logs
+    print(f"[STT] Transcript: '{transcript}'")
+
+    # --- Wake-word filter for hands-free mode ---
+    is_direct = request.args.get('direct', '0') in ['1', 'true'] or \
+                request.args.get('button', '0') in ['1', 'true']
+
+    if not is_direct:
+        # Check if assistant name (or phonetic variant) appears in transcript
+        name_variants = [assistant_name.lower(), 'persona', 'pursona', 'person a', 'purse ona']
+        name_found = any(v in transcript.lower() for v in name_variants)
+        if not name_found:
+            print(f"[REJECTED] Wake word not found in transcript: '{transcript}'")
+            esp_state = "idle"
+            return jsonify({"status": "ignored", "reason": "wake word not detected"})
+
+    # --- Pass 2: LLM Answer (text only — no audio, no hallucination) ---
+    reply_text, ans_err = call_gemini_answer(transcript, assistant_name)
+
+    if not reply_text:
+        print(f"[ERROR] LLM answer step failed: {ans_err}")
+        esp_state = "idle"
+        return jsonify({"status": "ignored", "reason": f"LLM answer failed: {ans_err}"})
+
+    print(f"[LLM] Reply: '{reply_text}'")
+
+    # --- Save user message to history ---
     chat_history.append({
         "sender": "user",
-        "text": user_text,
+        "text": transcript,
         "source": "voice",
         "audio": None,
         "timestamp": timestamp
     })
 
-    # Text-to-Speech (TTS)
+    # --- Text-to-Speech with unique filename (Fix 2: no stale cache) ---
+    unique_audio_path = make_unique_audio_path()
     try:
-        text_to_speech(reply_text, RESPONSE_AUDIO_PATH)
-        print("Speech synthesis completed.")
+        text_to_speech(reply_text, unique_audio_path)
+        print(f"[TTS] Speech saved: {os.path.basename(unique_audio_path)}")
     except Exception as e:
-        print(f"TTS Exception: {e}")
+        print(f"[TTS] Exception: {e}")
+        esp_state = "idle"
         return jsonify({"error": "Failed to synthesize speech"}), 500
 
-    audio_url = request.url_root + "static/response.mp3"
-    # NOTE: Do NOT set pending_esp_audio here.
-    # The voice endpoint returns the audio URL directly in the HTTP response body,
-    # so the ESP32 plays it immediately from processVoiceCommand().
-    # Setting pending_esp_audio here would cause the ESP32 to play the audio
-    # a second time when it polls /pending_audio. (Double playback bug.)
-    # pending_esp_audio is only for web dashboard typed-chat replies.
+    # Build audio URL — use relative path under /static/
+    audio_filename = os.path.basename(unique_audio_path)
+    audio_url = request.url_root + "static/" + audio_filename
+    # NOTE: Do NOT set pending_esp_audio here — the URL is returned directly
+    # in the HTTP response so ESP32 plays it immediately from processVoiceCommand().
+    # Setting pending_esp_audio would cause double playback when /pending_audio is polled.
 
-    # Save assistant message to history logs
+    # --- Save assistant message to history ---
     chat_history.append({
         "sender": "assistant",
         "text": reply_text,
@@ -520,7 +563,7 @@ def process_voice():
     return jsonify({
         "reply": reply_text,
         "audio": audio_url,
-        "query": user_text
+        "query": transcript
     })
 
 # Run Flask locally (only for debugging)
