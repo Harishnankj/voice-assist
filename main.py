@@ -265,10 +265,12 @@ def get_valid_gemini_models():
         except Exception as e:
             print(f"ListModels error for {ver}: {e}")
 
+    # Fastest models first — gemini-2.0-flash is the quickest for audio + text
     defaults = [
+        ("v1beta", "gemini-2.0-flash"),
         ("v1beta", "gemini-1.5-flash"),
+        ("v1beta", "gemini-2.0-flash-exp"),
         ("v1beta", "gemini-1.5-pro"),
-        ("v1beta", "gemini-2.0-flash-exp")
     ]
     for d in defaults:
         if d not in discovered:
@@ -299,7 +301,13 @@ def call_gemini_api(prompt_text, inline_audio_b64=None):
                 })
             parts.append({"text": prompt_text})
 
-            payload = {"contents": [{"parts": parts}]}
+            payload = {
+                "contents": [{"parts": parts}],
+                "generationConfig": {
+                    "maxOutputTokens": 300,
+                    "temperature": 0.7
+                }
+            }
             response = requests.post(url, headers={"Content-Type": "application/json"}, json=payload, timeout=25)
             res_json = response.json()
 
@@ -386,6 +394,54 @@ def call_gemini_answer(transcript, assistant_nm, lang='en'):
     )
     reply, err = call_gemini_api(prompt)
     return reply, err
+
+
+def call_gemini_voice_combined(audio_b64, assistant_nm, is_direct=True):
+    """Single-pass: transcribe audio AND generate reply in ONE Gemini API call.
+    Saves one full API round-trip vs the two-pass STT+LLM approach.
+    Returns (transcript, reply, error_str).
+    Language is auto-detected by Gemini — it replies in the same language as spoken.
+    """
+    if not GEMINI_API_KEY:
+        return None, None, "GEMINI_API_KEY not set"
+
+    context = (
+        "The user pressed a push-to-talk button to speak to you directly."
+        if is_direct else
+        f"Only answer if the user explicitly addressed you as '{assistant_nm}'."
+    )
+
+    prompt = (
+        f"You are '{assistant_nm}', a friendly AI voice assistant (like Alexa or Siri).\n"
+        f"{context}\n\n"
+        f"Listen to this audio and output ONLY a valid JSON object — no markdown, no code block, no extra text:\n"
+        f'{{"transcript": "<exact words spoken>", "reply": "<helpful answer in 1-2 short sentences>"}}\n\n'
+        f"Rules:\n"
+        f"- If audio is silent, noise, or inaudible: output {{\"transcript\": \"INAUDIBLE\", \"reply\": \"INAUDIBLE\"}}\n"
+        f"- Reply in the SAME language as spoken (Malayalam script for Malayalam, English for English)\n"
+        f"- Keep reply direct and concise — no filler like 'Sure!' or 'Of course!'\n"
+        f"- For math/facts: be accurate and brief"
+    )
+
+    raw_text, err = call_gemini_api(prompt, inline_audio_b64=audio_b64)
+    if not raw_text:
+        return None, None, err
+
+    # Strip markdown code fences if Gemini wraps output
+    text = raw_text.strip()
+    if text.startswith('```'):
+        text = re.sub(r'^```[a-z]*\n?', '', text)
+        text = re.sub(r'\n?```$', '', text).strip()
+
+    try:
+        data = json.loads(text)
+        transcript = data.get('transcript', '').strip()
+        reply = data.get('reply', '').strip()
+        print(f"[Combined] Transcript: '{transcript}' | Reply: '{reply[:60]}'")
+        return transcript, reply, None
+    except Exception as e:
+        print(f"[Combined] JSON parse error: {e} | raw: {raw_text[:150]}")
+        return None, None, f"JSON parse error: {e}"
 
 
 def make_unique_audio_path():
@@ -510,44 +566,45 @@ def process_voice():
     if not GEMINI_API_KEY:
         return jsonify({"error": "Gemini API key is not configured"}), 500
 
-    # --- Pass 1: Speech-to-Text ---
-    audio_b64 = base64.b64encode(audio_data).decode('utf-8')
-    transcript, stt_err = call_gemini_stt(audio_b64)
-
-    if not transcript:
-        reason = f"inaudible audio (STT returned empty): {stt_err or 'no transcript'}" 
-        print(f"[REJECTED] {reason}")
-        esp_state = "idle"
-        return jsonify({"status": "ignored", "reason": reason})
-
-    print(f"[STT] Transcript: '{transcript}'")
-
-    # --- Detect language from transcript ---
-    lang = detect_language(transcript)
-    print(f"[LANG] Detected language: {'Malayalam' if lang == 'ml' else 'English'}")
-
-    # --- Wake-word filter for hands-free mode ---
+    # --- Wake-word / direct-mode flag ---
     is_direct = request.args.get('direct', '0') in ['1', 'true'] or \
                 request.args.get('button', '0') in ['1', 'true']
 
+    # --- Single-pass: STT + LLM in one Gemini call (fastest path) ---
+    audio_b64 = base64.b64encode(audio_data).decode('utf-8')
+    transcript, reply_text, combo_err = call_gemini_voice_combined(audio_b64, assistant_name, is_direct=is_direct)
+
+    if not transcript:
+        reason = f"Gemini call failed: {combo_err}"
+        print(f"[ERROR] {reason}")
+        esp_state = "idle"
+        return jsonify({"status": "error", "reason": reason}), 500
+
+    # --- Silence / inaudible gate ---
+    if transcript.upper() == "INAUDIBLE" or len(transcript) < 3:
+        print(f"[REJECTED] Inaudible audio")
+        esp_state = "idle"
+        return jsonify({"status": "ignored", "reason": "inaudible audio"})
+
+    # --- Wake-word filter for hands-free mode ---
     if not is_direct:
-        # Check if assistant name (or phonetic variant) appears in transcript
         name_variants = [assistant_name.lower(), 'persona', 'pursona', 'person a', 'purse ona']
         name_found = any(v in transcript.lower() for v in name_variants)
         if not name_found:
-            print(f"[REJECTED] Wake word not found in transcript: '{transcript}'")
+            print(f"[REJECTED] Wake word not found in: '{transcript}'")
             esp_state = "idle"
             return jsonify({"status": "ignored", "reason": "wake word not detected"})
 
-    # --- Pass 2: LLM Answer (text only — no audio, no hallucination) ---
-    reply_text, ans_err = call_gemini_answer(transcript, assistant_name, lang=lang)
-
-    if not reply_text:
-        print(f"[ERROR] LLM answer step failed: {ans_err}")
+    if not reply_text or reply_text.upper() == "INAUDIBLE":
+        print(f"[ERROR] No reply generated for: '{transcript}'")
         esp_state = "idle"
-        return jsonify({"status": "ignored", "reason": f"LLM answer failed: {ans_err}"})
+        return jsonify({"status": "ignored", "reason": "no reply generated"})
 
     print(f"[LLM] Reply: '{reply_text}'")
+
+    # --- Detect language from transcript for TTS voice selection ---
+    lang = detect_language(transcript)
+    print(f"[LANG] Detected: {'Malayalam' if lang == 'ml' else 'English'}")
 
     # --- Save user message to history ---
     chat_history.append({
