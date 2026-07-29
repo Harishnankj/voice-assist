@@ -113,7 +113,7 @@ def check_key():
 def text_to_speech(text, output_path):
     """Synthesize high-quality text-to-speech using Microsoft Edge TTS with thread-safe runner"""
     async def _generate():
-        communicate = edge_tts.Communicate(text, "en-US-EmmaMultilingualNeural")
+        communicate = edge_tts.Communicate(text, "en-US-EmmaMultilingualNeural", volume="+100%")
         await communicate.save(output_path)
 
     try:
