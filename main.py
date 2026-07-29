@@ -121,9 +121,9 @@ def detect_language(text):
 
 def text_to_speech(text, output_path, lang='en'):
     """Synthesize high-quality text-to-speech using Microsoft Edge TTS.
-    Uses ml-IN-SobhanaNeural for Malayalam, en-US-EmmaMultilingualNeural for English.
+    Uses ml-IN-SobhanaNeural for Malayalam, en-US-JennyNeural for English.
     """
-    voice = 'ml-IN-SobhanaNeural' if lang == 'ml' else 'en-US-EmmaMultilingualNeural'
+    voice = 'ml-IN-SobhanaNeural' if lang == 'ml' else 'en-US-JennyNeural'
 
     async def _generate():
         communicate = edge_tts.Communicate(text, voice, volume="+100%")
@@ -622,7 +622,7 @@ def process_voice():
     unique_audio_path = make_unique_audio_path()
     try:
         text_to_speech(reply_text, unique_audio_path, lang=lang)
-        print(f"[TTS] Speech saved: {os.path.basename(unique_audio_path)} (voice: {'ml-IN-SobhanaNeural' if lang == 'ml' else 'en-US-EmmaMultilingualNeural'})")
+        print(f"[TTS] Speech saved: {os.path.basename(unique_audio_path)} (voice: {'ml-IN-SobhanaNeural' if lang == 'ml' else 'en-US-JennyNeural'})")
     except Exception as e:
         print(f"[TTS] Exception: {e}")
         esp_state = "idle"
