@@ -408,7 +408,7 @@ def call_gemini_voice_combined(audio_b64, assistant_nm, is_direct=True):
     context = (
         "The user pressed a push-to-talk button to speak to you directly."
         if is_direct else
-        f"Only answer if the user explicitly addressed you as '{assistant_nm}'."
+        f"Answer if the user addressed you as '{assistant_nm}', or if they started with a greeting like 'hello', 'hi', or 'hey'."
     )
 
     prompt = (
@@ -588,9 +588,12 @@ def process_voice():
 
     # --- Wake-word filter for hands-free mode ---
     if not is_direct:
-        name_variants = [assistant_name.lower(), 'persona', 'pursona', 'person a', 'purse ona']
-        name_found = any(v in transcript.lower() for v in name_variants)
-        if not name_found:
+        t_lower = transcript.lower()
+        name_variants  = [assistant_name.lower(), 'persona', 'pursona', 'person a', 'purse ona']
+        hello_variants = ['hello', 'hi', 'hey', 'helo']
+        name_found  = any(v in t_lower for v in name_variants)
+        hello_found = any(t_lower.startswith(v) for v in hello_variants)
+        if not name_found and not hello_found:
             print(f"[REJECTED] Wake word not found in: '{transcript}'")
             esp_state = "idle"
             return jsonify({"status": "ignored", "reason": "wake word not detected"})
