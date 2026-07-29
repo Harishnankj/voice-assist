@@ -110,10 +110,23 @@ def check_key():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-def text_to_speech(text, output_path):
-    """Synthesize high-quality text-to-speech using Microsoft Edge TTS with thread-safe runner"""
+def detect_language(text):
+    """Detect if text is primarily Malayalam or English.
+    Returns 'ml' if more than 2 Malayalam Unicode characters are found, else 'en'.
+    Malayalam Unicode block: U+0D00 to U+0D7F.
+    """
+    malayalam_chars = sum(1 for c in text if '\u0D00' <= c <= '\u0D7F')
+    return 'ml' if malayalam_chars > 2 else 'en'
+
+
+def text_to_speech(text, output_path, lang='en'):
+    """Synthesize high-quality text-to-speech using Microsoft Edge TTS.
+    Uses ml-IN-SobhanaNeural for Malayalam, en-US-EmmaMultilingualNeural for English.
+    """
+    voice = 'ml-IN-SobhanaNeural' if lang == 'ml' else 'en-US-EmmaMultilingualNeural'
+
     async def _generate():
-        communicate = edge_tts.Communicate(text, "en-US-EmmaMultilingualNeural", volume="+100%")
+        communicate = edge_tts.Communicate(text, voice, volume="+100%")
         await communicate.save(output_path)
 
     try:
@@ -352,16 +365,23 @@ def call_gemini_stt(audio_b64):
     return "", last_err
 
 
-def call_gemini_answer(transcript, assistant_nm):
+def call_gemini_answer(transcript, assistant_nm, lang='en'):
     """Pass 2 — LLM text answer.
     Given the transcribed text, ask Gemini for a short conversational reply.
+    lang: 'ml' for Malayalam reply, 'en' for English reply.
     Returns (reply_str, error_str).
     """
+    if lang == 'ml':
+        lang_instruction = "Reply in Malayalam language using Malayalam script (not transliteration)."
+    else:
+        lang_instruction = "Reply in English."
+
     prompt = (
         f"You are '{assistant_nm}', a friendly ESP32 AI voice assistant like Alexa. "
         f"Answer the following question or command accurately, helpfully, and concisely in 1-2 short sentences. "
         f"Do NOT repeat the question. Do NOT add filler phrases like 'Sure!' or 'Of course!'. "
         f"Just give the direct, helpful answer. "
+        f"{lang_instruction} "
         f"Question: {transcript}"
     )
     reply, err = call_gemini_api(prompt)
@@ -502,6 +522,10 @@ def process_voice():
 
     print(f"[STT] Transcript: '{transcript}'")
 
+    # --- Detect language from transcript ---
+    lang = detect_language(transcript)
+    print(f"[LANG] Detected language: {'Malayalam' if lang == 'ml' else 'English'}")
+
     # --- Wake-word filter for hands-free mode ---
     is_direct = request.args.get('direct', '0') in ['1', 'true'] or \
                 request.args.get('button', '0') in ['1', 'true']
@@ -516,7 +540,7 @@ def process_voice():
             return jsonify({"status": "ignored", "reason": "wake word not detected"})
 
     # --- Pass 2: LLM Answer (text only — no audio, no hallucination) ---
-    reply_text, ans_err = call_gemini_answer(transcript, assistant_name)
+    reply_text, ans_err = call_gemini_answer(transcript, assistant_name, lang=lang)
 
     if not reply_text:
         print(f"[ERROR] LLM answer step failed: {ans_err}")
@@ -537,8 +561,8 @@ def process_voice():
     # --- Text-to-Speech with unique filename (Fix 2: no stale cache) ---
     unique_audio_path = make_unique_audio_path()
     try:
-        text_to_speech(reply_text, unique_audio_path)
-        print(f"[TTS] Speech saved: {os.path.basename(unique_audio_path)}")
+        text_to_speech(reply_text, unique_audio_path, lang=lang)
+        print(f"[TTS] Speech saved: {os.path.basename(unique_audio_path)} (voice: {'ml-IN-SobhanaNeural' if lang == 'ml' else 'en-US-EmmaMultilingualNeural'})")
     except Exception as e:
         print(f"[TTS] Exception: {e}")
         esp_state = "idle"
