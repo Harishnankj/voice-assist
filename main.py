@@ -126,7 +126,7 @@ def text_to_speech(text, output_path, lang='en'):
     voice = 'ml-IN-SobhanaNeural' if lang == 'ml' else 'en-US-JennyNeural'
 
     async def _generate():
-        communicate = edge_tts.Communicate(text, voice, volume="+100%")
+        communicate = edge_tts.Communicate(text, voice, volume="+15dB")
         await communicate.save(output_path)
 
     try:
