@@ -544,6 +544,212 @@
             stroke: var(--accent-glow);
             opacity: 0.6;
         }
+
+        /* Camera Sidebar Styling */
+        .camera-sidebar {
+            position: absolute;
+            top: 0;
+            right: -340px;
+            width: 340px;
+            height: 100%;
+            background: rgba(13, 19, 33, 0.95);
+            border-left: 1px solid var(--border-color);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            z-index: 10;
+            transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            flex-direction: column;
+            box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .camera-sidebar.open {
+            right: 0;
+        }
+
+        .sidebar-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar-header h2 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .sidebar-header .close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.2rem;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .sidebar-header .close-btn:hover {
+            color: var(--text-main);
+        }
+
+        .sidebar-content {
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .config-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .config-group label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .config-group input {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 10px 14px;
+            border-radius: 10px;
+            outline: none;
+            font-family: inherit;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .config-group input:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.25);
+        }
+
+        .save-ip-btn {
+            background: var(--accent-primary);
+            border: none;
+            color: white;
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .save-ip-btn:hover {
+            background: var(--accent-glow);
+        }
+
+        .help-text {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+
+        .stream-container {
+            width: 100%;
+            aspect-ratio: 4/3;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .stream-placeholder {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 20px;
+        }
+
+        .stream-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .camera-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .action-btn {
+            width: 100%;
+            padding: 12px;
+            border-radius: 12px;
+            border: none;
+            background: var(--accent-secondary);
+            color: white;
+            font-family: inherit;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .action-btn:hover {
+            filter: brightness(1.1);
+        }
+
+        .action-btn.stop {
+            background: var(--accent-recording);
+        }
+
+        .control-row {
+            display: flex;
+            gap: 10px;
+        }
+
+        .control-btn {
+            flex: 1;
+            padding: 10px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-main);
+            font-family: inherit;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .external-links {
+            text-align: center;
+            margin-top: 10px;
+        }
+
+        .external-links a {
+            color: var(--accent-glow);
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: color 0.2s;
+        }
+
+        .external-links a:hover {
+            text-decoration: underline;
+            color: var(--text-main);
+        }
     </style>
 </head>
 <body>
@@ -582,6 +788,7 @@
                     <input type="text" id="nameInput" value="Persona" onchange="changeAssistantName()" style="background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: #fff; border-radius: 6px; padding: 4px 8px; width: 90px; font-size: 0.85rem;" />
                 </div>
                 <button class="icon-btn" onclick="clearHistoryUI()" title="Clear Console Log">🗑️</button>
+                <button class="icon-btn" onclick="toggleCameraSidebar()" title="Toggle Camera Stream">📹</button>
             </div>
         </header>
 
@@ -613,6 +820,44 @@
                 <button class="mic-btn" id="micBtn" onclick="toggleVoiceRecording()" title="Speak to assistant">🎙️</button>
             </div>
             <button class="send-btn" onclick="sendTextMessage()">Send</button>
+        </div>
+
+        <!-- Collapsible Camera Sidebar -->
+        <div class="camera-sidebar" id="cameraSidebar">
+            <div class="sidebar-header">
+                <h2>ESP32-CAM Stream</h2>
+                <button class="close-btn" onclick="toggleCameraSidebar()">✕</button>
+            </div>
+            <div class="sidebar-content">
+                <div class="config-group">
+                    <label for="cameraIpInput">Camera IP Address:</label>
+                    <div style="display: flex; gap: 8px; margin-top: 6px;">
+                        <input type="text" id="cameraIpInput" placeholder="e.g., 192.168.1.100" />
+                        <button class="save-ip-btn" onclick="saveCameraIp()">Save</button>
+                    </div>
+                    <small class="help-text">Enter the IP printed in the ESP32-CAM serial logs.</small>
+                </div>
+                
+                <div class="stream-container" id="streamContainer">
+                    <div class="stream-placeholder" id="streamPlaceholder">
+                        <span style="font-size: 2.5rem; margin-bottom: 8px;">📷</span>
+                        <p>Stream is offline or IP not saved.</p>
+                    </div>
+                    <img id="cameraStreamImg" class="stream-img" src="" alt="ESP32-CAM Live Stream" style="display: none;" />
+                </div>
+                
+                <div class="camera-actions" id="cameraActions" style="display: none;">
+                    <button class="action-btn" onclick="toggleCameraStream(true)" id="btnStartStream">▶ Start Stream</button>
+                    <button class="action-btn stop" onclick="toggleCameraStream(false)" id="btnStopStream" style="display: none;">⏸ Stop Stream</button>
+                    <div class="control-row">
+                        <button class="control-btn" onclick="triggerCapture()">📸 Capture</button>
+                        <button class="control-btn" onclick="toggleFlash()">💡 Toggle Flash</button>
+                    </div>
+                    <div class="external-links">
+                        <a id="camPanelLink" href="#" target="_blank">Open ESP32-CAM Control Panel ↗</a>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1168,10 +1413,114 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
         }
 
+        // Camera Web Stream Control Functions
+        function toggleCameraSidebar() {
+            const sidebar = document.getElementById('cameraSidebar');
+            sidebar.classList.toggle('open');
+            if (!sidebar.classList.contains('open')) {
+                toggleCameraStream(false);
+            }
+        }
+
+        function saveCameraIp() {
+            const ipInput = document.getElementById('cameraIpInput');
+            let ip = ipInput.value.trim();
+            if (!ip) {
+                alert('Please enter a valid IP address or URL');
+                return;
+            }
+            
+            // Clean up protocol prefix
+            if (!/^https?:\/\//i.test(ip)) {
+                ip = 'http://' + ip;
+            }
+            ip = ip.replace(/\/+$/, '');
+            
+            localStorage.setItem('esp32_camera_url', ip);
+            updateCameraUI();
+            alert('Camera URL saved: ' + ip);
+        }
+
+        function loadCameraIp() {
+            let savedUrl = localStorage.getItem('esp32_camera_url');
+            if (!savedUrl) {
+                savedUrl = 'http://192.168.137.21';
+                localStorage.setItem('esp32_camera_url', savedUrl);
+            }
+            if (savedUrl) {
+                const ipInput = document.getElementById('cameraIpInput');
+                if (ipInput) {
+                    ipInput.value = savedUrl.replace(/^https?:\/\//i, '');
+                }
+                updateCameraUI();
+            }
+        }
+
+        function updateCameraUI() {
+            const savedUrl = localStorage.getItem('esp32_camera_url');
+            const cameraActions = document.getElementById('cameraActions');
+            const camPanelLink = document.getElementById('camPanelLink');
+            
+            if (savedUrl) {
+                cameraActions.style.display = 'flex';
+                if (camPanelLink) {
+                    camPanelLink.href = savedUrl;
+                }
+            } else {
+                cameraActions.style.display = 'none';
+            }
+        }
+
+        let streamActive = false;
+        function toggleCameraStream(start) {
+            const savedUrl = localStorage.getItem('esp32_camera_url');
+            if (!savedUrl) return;
+            
+            const img = document.getElementById('cameraStreamImg');
+            const placeholder = document.getElementById('streamPlaceholder');
+            const btnStart = document.getElementById('btnStartStream');
+            const btnStop = document.getElementById('btnStopStream');
+            
+            if (start) {
+                streamActive = true;
+                img.src = `${savedUrl}/stream`;
+                img.style.display = 'block';
+                placeholder.style.display = 'none';
+                btnStart.style.display = 'none';
+                btnStop.style.display = 'flex';
+            } else {
+                streamActive = false;
+                img.src = '';
+                img.style.display = 'none';
+                placeholder.style.display = 'flex';
+                btnStart.style.display = 'flex';
+                btnStop.style.display = 'none';
+            }
+        }
+
+        function triggerCapture() {
+            const savedUrl = localStorage.getItem('esp32_camera_url');
+            if (!savedUrl) return;
+            window.open(`${savedUrl}/capture`, '_blank');
+        }
+
+        let flashOn = false;
+        function toggleFlash() {
+            const savedUrl = localStorage.getItem('esp32_camera_url');
+            if (!savedUrl) return;
+            flashOn = !flashOn;
+            const intensity = flashOn ? 255 : 0;
+            // Silent image request to bypass CORS control block
+            const controlTrigger = new Image();
+            controlTrigger.src = `${savedUrl}/control?var=led_intensity&val=${intensity}`;
+            console.log(`CORS Bypass trigger: set flash to ${intensity}`);
+        }
+
         window.onload = () => {
             loadActiveModel();
             loadAssistantName();
             fetchHistory();
+            loadCameraIp();
             setInterval(fetchHistory, 2000);
         };
     </script>
